@@ -13,11 +13,9 @@ Layout after consolidation:
   src/<prog>/     Graded C + ASM answers (bf16, fixed, gcd, rubik)
   notes/          HackMD draft + per-program experiment write-ups
   labs/           Local-only playground snapshots (gitignored; not graded)
-                  Imported from former bf16 / baremetal / minirubik trees
 
-Retired local trees (removed after this merge):
-  homework/2026-hw2-baremetal
-  homework/bf16
+Standalone side project (not part of this graded tree):
+  homework/bf16   Truncate BF16 lab (own git repo / GitHub)
 
 Toolchain (local host):
   export PATH="$HOME/Computer_architecture/tools/riscv/bin:$PATH"
