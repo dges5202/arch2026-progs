@@ -13,7 +13,8 @@ endif
 
 RV_CC      := $(CROSS_COMPILE)gcc
 RV_AS      := $(CROSS_COMPILE)as
-RV_LD      := $(CROSS_COMPILE)ld
+# GCC 16 riscv64-unknown-elf-ld defaults to elf64; force the RV32 emulation.
+RV_LD      := $(CROSS_COMPILE)ld -m elf32lriscv
 RV_OBJDUMP := $(CROSS_COMPILE)objdump
 RV_NM      := $(CROSS_COMPILE)nm
 RV_SIZE    := $(CROSS_COMPILE)size
