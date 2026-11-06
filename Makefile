@@ -62,8 +62,10 @@ toolchain:
 
 # Target (RV32I, bare metal) build ------------------------------------------
 
+# -Wno-unused-but-set-variable: GCC 16 + -Werror trips on harness spin loops.
 TARGET_CFLAGS := $(RV_ARCH) -g -ffreestanding -fno-pic -fno-stack-protector \
-                 -Wall -Wextra -Werror -Wvla -iquote . -Icommon -Itests -MMD -MP
+                 -Wall -Wextra -Werror -Wno-unused-but-set-variable -Wvla \
+                 -iquote . -Icommon -Itests -MMD -MP
 TARGET_ASFLAGS := $(RV_ARCH) -g
 TARGET_LDFLAGS := -T common/linker.ld --no-warn-rwx-segments
 
