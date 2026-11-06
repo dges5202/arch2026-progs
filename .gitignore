@@ -13,3 +13,6 @@
 __pycache__/
 /tools/oracle/
 /.trusted/
+
+# Local playground snapshots (imported; not graded; kept out of hooks)
+/labs/

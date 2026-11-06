@@ -1,0 +1,29 @@
+arch2026-progs (canonical tree)
+--------------------------------
+
+Path: homework/arch2026-progs
+Origin (fork):  https://github.com/dges5202/arch2026-progs
+Upstream:       https://github.com/sysprog21/arch2026-progs
+
+Remotes:
+  origin   -> dges5202/arch2026-progs   (push here)
+  upstream -> sysprog21/arch2026-progs  (fetch/rebase only)
+
+Layout after consolidation:
+  src/<prog>/     Graded C + ASM answers (bf16, fixed, gcd, rubik)
+  notes/          HackMD draft + per-program experiment write-ups
+  labs/           Local-only playground snapshots (gitignored; not graded)
+                  Imported from former bf16 / baremetal / minirubik trees
+
+Retired local trees (removed after this merge):
+  homework/2026-hw2-baremetal
+  homework/bf16
+
+Toolchain (local host):
+  export PATH="$HOME/Computer_architecture/tools/riscv/bin:$PATH"
+  export CROSS_COMPILE=riscv64-unknown-elf-
+  make once  # hooks + third_party/rv32emu
+
+Third-party / local patches (not committed):
+  third_party/rv32emu with system_interpreter + ELF_LOADER
+  EXT_M / EXT_A / EXT_F / EXT_C off for pure RV32I
