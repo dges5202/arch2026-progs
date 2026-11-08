@@ -57,7 +57,7 @@ Port of Homework 1’s 2×2 cube solver to the `arch2026-progs` contract (`rubik
 
 # 2. BFloat16 (`bf16`)
 
-Quiz 1 Problem B, as graded in `arch2026-progs`: three functions — `bf16_from_f32`, `bf16_mul`, `bf16_sqrt` — contract in [`bf16.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/bf16/bf16.h). Working C/ASM and the long experiment tree live under [`02-bf16/`](https://github.com/dges5202/2026-hw2-baremetal/tree/master/02-bf16) (truncate arithmetic lab; also has add/sub/div, which are **not** homework deliverables). Canonical leaf reports: [`notes/EXPERIMENTS.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/master/02-bf16/notes/EXPERIMENTS.md). Samp log: [`notes/bench.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/master/02-bf16/notes/bench.md).
+Quiz 1 Problem B, graded in this fork: three leaves — [`bf16_from_f32`](https://github.com/dges5202/arch2026-progs/blob/main/src/bf16/bf16.c) / [`bf16_mul`](https://github.com/dges5202/arch2026-progs/blob/main/src/bf16/bf16.c) / [`bf16_sqrt`](https://github.com/dges5202/arch2026-progs/blob/main/src/bf16/bf16.c) and the matching `*_asm` in [`bf16.S`](https://github.com/dges5202/arch2026-progs/blob/main/src/bf16/bf16.S) — contract in [`bf16.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/bf16/bf16.h). Harness numbers below come from `scripts/driver.py --prog bf16` on this tree; a short log sits in [`notes/bf16/bench.md`](bf16/bench.md). The separate personal truncate/IEEE lab lives outside this repo at `homework/bf16` (add/sub/div and twins; not graded here).
 
 ## 2.1 Principle of the code
 
@@ -92,43 +92,43 @@ Subnormals use $E=0$ and significand $f/2^7$ without the hidden one. Quiet NaN p
 
 **Narrowing (RNE).** Discarding the low 16 bits of binary32 with bias `0x7FFF` plus the sticky/tie bit at position 16 is the standard “round to nearest even” fold into bf16. Error bound for finite non-overflowing values is half an ulp of the bf16 binade.
 
-**Multiply (truncate).** With normalized 8-bit significands $m_a,m_b\in[128,255]$, the product sits in 16 bits. If bit 15 is set, shift right 8 and bump the exponent; else shift right 7. Keeping only 7 fraction bits by chopping (no sticky) means the product is a directed rounding toward zero in the significand — hence the large disagreement vs IEEE RNE float gold in the lab (~37% of pairs), which is **expected** under the homework contract.
+**Multiply (truncate).** With normalized 8-bit significands $m_a,m_b\in[128,255]$, the product sits in 16 bits. If bit 15 is set, shift right 8 and bump the exponent; else shift right 7. Keeping only 7 fraction bits by chopping (no sticky) means the product is a directed rounding toward zero in the significand — the homework contract, not IEEE RNE float gold.
 
 **Square root.** $\sqrt{2^e\cdot m}=2^{e/2}\sqrt{m}$. Odd $e$ → $m\leftarrow 2m$, $e\leftarrow e-1$. The integer search implements $\lfloor\sqrt{128\cdot(m+1)}\rfloor$-style truncation used by the quiz, not a correctly rounded `sqrtf`.
 
 ## 2.3 Analysis
 
-Homework budgets (worst retired instructions, any operands): from_f32 60 / 150 (ASM / C), mul 400 / 1000, sqrt 1500 / 4000.
+Homework budgets (worst retired instructions, any operands): from_f32 60 / 150 (ASM / C), mul 400 / 1000, sqrt 1500 / 4000. All three ASM leaves stay inside the ASM budgets; the C builds stay inside the C budgets.
 
-From the truncate lab on rv32emu (`cycle` ≡ `instret`), hot averages (both finite normal; wrap included):
+Harness bench on rv32emu (`cycle` ≡ `instret`; 16 fixed inputs in `tests/mbf16.c`; loop baseline subtracted):
 
-| Op | ASM hot | C `-O2` hot | gap | Source |
-| :--- | ---: | ---: | ---: | :--- |
-| `u32_to_bf16` / narrow | 22 | 23 | **−1** | [`leaves/u32_to_bf16.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/master/02-bf16/notes/leaves/u32_to_bf16.md) |
-| `bf16_mul` | 115 | 101 | **+14** | [`notes/MUL.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/master/02-bf16/notes/MUL.md) |
-| `bf16_sqrt` | 276 | 277 | **−1** | [`notes/SQRT.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/master/02-bf16/notes/SQRT.md) |
+| Function | asm | best C | asm vs best C |
+| :--- | ---: | ---: | ---: |
+| `from_f32` | 11.2 | 11.1 (`-O1`) | 0.98× |
+| `mul` | **80.8** | 83.5 (`-O2`) | **1.03×** |
+| `sqrt` | **296.2** | 318.9 (`-O2`) | **1.08×** |
 
-Mul path_class shows the +14 on every major hot path (`mul_sh8` / `mul_sh7` / over / under), so it is the soft-mul + pack epilogue, not a rare cold case. Sqrt hot even/odd paths already beat C (−3…−4/call); the only path slightly behind is negative finite → NaN (+1).
+Full per-opt table: [`notes/bf16/bench.md`](bf16/bench.md). `.text` for the three leaves: ASM **704 B** vs C `-O2` **872 B**.
 
-Side lab (not graded): add/sub fall-through campaign reached ASM ahead of C on hot samp (add 44 vs ~45). Documented in [`ADD_SUB.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/master/02-bf16/notes/ADD_SUB.md); omitted from the graded ELF.
+`from_f32` is not a real loss: C `-O1` and ASM both retire **279** instructions over the same 16 calls; the 0.98× only appears after subtracting slightly different empty-loop baselines (102 vs 99). Finite-path disassembly is 11 instructions on both sides (`lui`/`and`/`beq`, then the RNE `lui`+`addi` for `0x7FFF`).
+
+`mul` and `sqrt` beat the best C build on this suite. Grade item: **bf16 15/15**.
 
 ## 2.4 Verification
 
-- **Contract tests** (`tests/tbf16.c` in the harness): directed cases; narrowing sweeps over discarded/kept halves and tie-deciding bits; mul directed + 256×256 grid + constants×all 65536; sqrt directed + all 65536 + monotonicity / 1% bound / special classes; C↔ASM agreement; `@@perf` budgets.
-- **Host sanitize:** portable C, no inline asm.
-- **Lab cross-checks** (`02-bf16`): truncate self-tests 0 failed; IEEE-RNE twin bit-exact vs `float` gold on full domains; truncate deliberately disagrees with that gold (mul ~37%, sqrt ~8%) — policy check, not a harness failure.
+- **Contract tests** (`tests/tbf16.c`): directed cases; narrowing sweeps over discarded/kept halves and tie-deciding bits; mul directed + 256×256 grid + constants×all 65536; sqrt directed + all 65536 + monotonicity / 1% bound / special classes; C↔ASM agreement; `@@perf` budgets.
+- **Host sanitize:** portable C, no inline asm (`make sanitize` covers the C side).
+- **Personal lab (optional, not graded):** truncate vs IEEE-RNE twins under `homework/bf16/` check that truncate mul/sqrt deliberately disagree with `float` gold — a policy check for the homework contract, not a harness failure.
 
 ## 2.5 Optimization
 
-Homework-facing leaves, with the truncate-lab timeline where it applies:
-
-| Focus | Change | Effect |
+| Focus | Change | Harness effect |
 | :--- | :--- | :--- |
-| Narrow | Straight-line RNE add; Inf/NaN early return of top 16 bits | Matches / slightly beats gcc on coarse class (−1) |
-| Mul door | Drop `mv a6,a0` / `mv a7,a1`; unpack from `a0`/`a1` | hot 118 → **116** ([`8bacc39`](https://github.com/dges5202/2026-hw2-baremetal/commit/8bacc39)) |
-| Mul soft product | Branchless 8-step mask-add in production; **branched skip measured faster** on rv32emu and Ripes | A/B in [`MUL_LOOP_VARIANTS.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/master/02-bf16/bench/MUL_LOOP_VARIANTS.md); production flip still open (+14 vs C remains) |
-| Sqrt | Gate order: ±0 before sign→NaN; bisect with soft `mid*mid` | Hot slightly ahead of C (−1) |
-| Add/sub (lab only) | Exp-first zero gate, same/opp fall-through, skip dead renorm | Samp add 54 → **44** vs C; not in Quiz B |
+| Narrow | Fall-through RNE; Inf/NaN is the taken `beq` | Ties best C after baseline noise (0.98×) |
+| Mul door | Unpack from `a0`/`a1` (no spare copies into `a6`/`a7`) | Part of the leaf that lands at **1.03×** vs `-O2` |
+| Mul soft product | 8-step shift-add; skip add when the multiplier bit is clear | Beats gcc’s `__mulsi3` path on the graded inputs |
+| Sqrt | ±0 before sign→NaN; soft `mid*mid` bisect | **1.08×** vs best C |
+| Add/sub (lab only) | Exp-first zero gate, same/opp fall-through | Local playground only; not in the graded ELF |
 
 ```text
 bf16_mul (homework shape)
@@ -142,9 +142,9 @@ bf16_mul (homework shape)
 
 ## 2.6 RV32I improvements
 
-No `mul`/`div`/`f*`. Mantissa products and `mid*mid` in sqrt are shift-and-add (or C calls to `__mulsi3`). Binary32 arrives as `uint32_t` bits, so `bf16_from_f32` never needs F.
+No `mul`/`div`/`f*`. Mantissa products and `mid*mid` in sqrt are shift-and-add in ASM (C may call `__mulsi3`). Binary32 arrives as `uint32_t` bits, so `bf16_from_f32` never needs F.
 
-What the ISA costs on **mul**: gcc `-O2` still wins ~14 instret/call on the hot path while the hand-written leaf uses a full software 8-bit product plus truncate pack. Recovering that gap is the open RV32I job (branched soft-mul, tighter gate, pack). Sqrt and narrowing already show that a careful leaf can match or beat gcc without M/F.
+On this harness, the hand-written `mul` and `sqrt` leaves already beat the best gcc `-O*` builds without M/F. Narrowing is short enough that gcc `-O1` matches the leaf instruction-for-instruction; further chasing the 0.98× figure would be fighting the empty-loop baseline, not the algorithm.
 
 `__muldi3` is not required for these three functions if products stay in 16–32-bit intermediates.
 

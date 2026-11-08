@@ -11,17 +11,19 @@ Remotes:
 
 Layout after consolidation:
   src/<prog>/     Graded C + ASM answers (bf16, fixed, gcd, rubik)
-  notes/          HackMD draft + per-program experiment write-ups
-  labs/           Local-only playground snapshots (gitignored; not graded)
+  notes/          HackMD draft + per-program bench write-ups
+  labs/           Local-only playgrounds (gitignored; not graded)
+                    gcd-playground/, fixed-playground/,
+                    minirubik-import/, arch-riscv-progs/
 
-Standalone side project (not part of this graded tree):
-  homework/bf16   Truncate BF16 lab (own git repo / GitHub)
+Separate personal project (do not fold into this fork):
+  homework/bf16   Full BF16 truncate/IEEE lab (add/sub/mul/div/sqrt + twins)
+
+Retired local trees:
+  homework/2026-hw2-baremetal
+  homework/arch-riscv-progs
 
 Toolchain (local host):
   export PATH="$HOME/Computer_architecture/tools/riscv/bin:$PATH"
   export CROSS_COMPILE=riscv64-unknown-elf-
   make once  # hooks + third_party/rv32emu
-
-Third-party / local patches (not committed):
-  third_party/rv32emu with system_interpreter + ELF_LOADER
-  EXT_M / EXT_A / EXT_F / EXT_C off for pure RV32I

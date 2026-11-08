@@ -8,6 +8,6 @@ and local experiments; the instructor harness ignores this tree.
 | [`hackmd.md`](hackmd.md) | Combined English draft for all four programs |
 | [`gcd/`](gcd/) | Binary GCD bench log and standalone draft |
 | [`fixed/`](fixed/) | Quiz 3 C / Q11.20 bench log |
-| [`bf16/`](bf16/) | BFloat16 experiment reports |
+| [`bf16/`](bf16/) | Harness bench log for the three graded leaves |
 | [`rubik/`](rubik/) | minirubik port notes |
 | [`../labs/`](../labs/) | Full playground trees (bf16 lab, gcd/fixed snapshots, HW1 import) |
