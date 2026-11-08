@@ -70,13 +70,21 @@ static const uint8_t kk[7] = {0, 1, 0, 1, 0, 1, 0};
  *   - conjugate σ / σ² (diagonal sym3): h = max(h, h_pos3ori(&conj), ...)
  * Do not use N-index tricks; transform the cubie state, then re-index.
  */
+/* RV32I bare-metal: no libgcc __modsi3 — keep ori in 0..2 by subtract. */
+static unsigned mod3(unsigned x)
+{
+    while (x >= 3)
+        x -= 3;
+    return x;
+}
+
 static state_t invert(const state_t *s)
 {
     state_t r;
     for (unsigned i = 0; i < CUBIES; ++i) {
         unsigned c = s->p[i];
         r.p[c] = i;
-        r.o[c] = (3 - s->o[i]) % 3;
+        r.o[c] = (uint8_t) mod3(3 - s->o[i]);
     }
     return r;
 }
@@ -86,7 +94,7 @@ static state_t sym3(const state_t *s)
     state_t y;
     for (unsigned i = 0; i < CUBIES; ++i) {
         y.p[sig[i]] = sig[s->p[i]];
-        y.o[sig[i]] = (s->o[i] + 3 + kk[i] - kk[s->p[i]]) % 3;
+        y.o[sig[i]] = (uint8_t) mod3(s->o[i] + 3 + kk[i] - kk[s->p[i]]);
     }
     return y;
 }
@@ -135,7 +143,7 @@ static state_t apply(const state_t s, unsigned m)
         for (unsigned i = 0; i < 7; ++i) {
             from = source[f][i];
             nxt.p[i] = cur.p[from];
-            nxt.o[i] = (cur.o[from] + twist[f][i]) % 3;
+            nxt.o[i] = (uint8_t) mod3(cur.o[from] + twist[f][i]);
         }
         cur = nxt;
     }

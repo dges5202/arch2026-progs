@@ -154,6 +154,16 @@ move_names:
     .byte   68, 50
     .byte   68, 39
 
+    # HW1 T5 replay stubs (still referenced by found-path until rewrite)
+    p:      .zero 7
+    o:      .zero 7
+    rp:     .zero 7
+    ro:     .zero 7
+message:
+    .asciz  "T5 failed"
+message2:
+    .asciz  "wrong length"
+
     .text
 
     # -------
