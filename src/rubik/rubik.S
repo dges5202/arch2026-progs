@@ -2,13 +2,8 @@
 # Contract: a0=state, a1=out, a2=cap; result in a0 (-1 / -2 / length).
 # Body still contains HW1 code; HW2 register map below is the target ABI.
 # Markers: lines/blocks tagged "HW1-CUT" conflict with HW2 — drop when rewriting.
-#
-#ifndef EXPECT
-#define EXPECT -1
-#endif
-#ifndef RENDER
-#define RENDER 0
-#endif
+# Gas has no C preprocessor here (Makefile uses `as`); HW1 EXPECT/RENDER
+# gates below are `.if 0` so bare `as` skips them.
 #
 # -------
 #  COMPLETE REGISTER ARCHITECTURE (HW2)
@@ -1051,12 +1046,12 @@ loop_c3:
 
     # Solved: the path is path[0..g-1], length g.
 found:
-#if EXPECT >= 0
+.if 0                                  # HW1 EXPECT gate (needs cpp + EXPECT)
     # if (EXPECT != g) goto len_failed;
     li      t0, EXPECT                  # t0 = EXPECT
     addi    t1, s2, 0                   # t1 = len = g
     bne     t0, t1, len_failed          # EXPECT != len
-#endif
+.endif
 
     # 6. Print the path as move names separated by spaces, then a newline.
     #
@@ -1139,9 +1134,9 @@ print_equal2:
 
     addi    s9, x0, 3                   # s9 = 3
 
-#if RENDER
+.if 0                                  # HW1 RENDER
     jal     ra, render                  # show the scrambled state
-#endif
+.endif
 
 test_loop:
     add     t2, s4, s0                  # t2 = path[i]'s memory
@@ -1214,9 +1209,9 @@ test_loop_inner2:
     addi    s7, s7, -1
     bne     s7, x0, turn_loop
 
-#if RENDER
+.if 0                                  # HW1 RENDER
     jal     ra, render                  # redraw after move path[i]
-#endif
+.endif
 
     addi    s0, s0, 1
     bne     s0, s1, test_loop
@@ -1275,7 +1270,7 @@ t5_failed:
     li      a0, 1
     ecall
 
-#if EXPECT >= 0
+.if 0                                  # HW1 EXPECT gate
     # puts("wrong length"); exit(2);
 len_failed:
     la      t0, message2                # t0 = message2's memory
@@ -1291,9 +1286,9 @@ len_failed:
     li      a7, 93
     li      a0, 2
     ecall
-#endif
+.endif
 
-#if RENDER
+.if 0                                  # HW1 RENDER (needs LED_MATRIX_0_BASE)
     # ------------------------------------------------------
     # 8. LED matrix renderer: unfolded net of the cube in p[], o[], redrawn
     # before the replay and after every move of the path.
@@ -1418,7 +1413,7 @@ draw_label:
     bne     t5, t6, draw_label
 
     jalr    x0, ra, 0                   # return
-#endif
+.endif
 
     # epilogue (KEEP): restore callee-saved; all HW2 exits should land here
 epilogue:
