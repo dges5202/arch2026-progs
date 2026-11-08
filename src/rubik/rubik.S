@@ -3,6 +3,13 @@
 # Body still contains HW1 code; HW2 register map below is the target ABI.
 # Markers: lines/blocks tagged "HW1-CUT" conflict with HW2 — drop when rewriting.
 #
+#ifndef EXPECT
+#define EXPECT -1
+#endif
+#ifndef RENDER
+#define RENDER 0
+#endif
+#
 # -------
 #  COMPLETE REGISTER ARCHITECTURE (HW2)
 # -------
