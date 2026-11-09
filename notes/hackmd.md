@@ -43,7 +43,16 @@ Port of Homework 1’s 2×2 cube solver to the `arch2026-progs` contract (`rubik
 
 ## 1.5 Optimization
 
-<!-- Table: commit / change / cycles before→after / why. Stack and static data moves belong here. -->
+Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = hardest God’s-number layer (**2644** states); full 3.67M C check is separate.
+
+| Ver | Change | d11 mean (ASM) | vs GCC `-O2` d11 | 5ST (Ripes) | Why |
+|-----|--------|---------------:|-----------------:|------------:|-----|
+| **v1** | IDA* + waterfall `s→inv→σ→σ²`; C-style apply; parse `sll` | **824,948** | **2.17× faster** (C mean 1,789,077) | *TBD* | First correct ASM; beats `-O2` on all 2644 d11 states |
+| | | p50 757k / max 4.54M; harness 6-depth: ASM 162k vs C 331k (2.04×) | | | Detail: [`rubik/bench-v1.md`](rubik/bench-v1.md) |
+| **v2** | Reorder `s→σ→σ²→inv`; `PDB_NIBBLE`; `r==0` gate | **909,588** | **1.97× faster** | *TBD* | **+10.3% vs v1** (regress); 52/52, d11 bad=0; still beats C on all 2644 |
+| | | p50 828k / max 5.06M; harness ASM 174k (+6.9% vs v1) | | | Lesson: measure each micro-step; log [`d11_cmp_cO2_vs_asm_v2.txt`](rubik/results/d11_cmp_cO2_vs_asm_v2.txt) |
+
+Ripes **5ST**: same `rubik_solve_asm` on min/max sample states in `notes/rubik/results/d11_ripes_sample_states.txt` (emu does not model 5-stage).
 
 ## 1.6 RV32I improvements
 

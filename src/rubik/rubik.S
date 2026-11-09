@@ -188,7 +188,7 @@ loop_build:
     addi    t5, t3, -49                 # t5 = o = in[7+i] - '1'
     bgeu    t4, t1, loop_parse_failed   # p not in 0..6
     li      t6, 1
-    slli    t6, t6, t4                  # 1 << p
+    sll     t6, t6, t4                  # 1 << p
     and     a3, a5, t6
     bnez    a3, loop_parse_failed       # duplicate cubie
     or      a5, a5, t6                  # seen |= 1<<p
@@ -789,11 +789,21 @@ child:
     sb      t2, 11(s5)                  # next[g] = m + 1
     beq     t5, a5, same_face           # same face as path[g - 1]: skip it
 
-    # from = turns_of[m]==1 ? g : g+1; Fsrc = Q + from_off[m] (0|16)
+    # -----------------------------------------------------------------
+    # apply (C-style, matches rubik.c) — NOT HW1 from_off chaining
+    #
+    # HW1 from_off: each m is ONE quarter from sibling
+    #   R  ← Q+0;  R2/R' ← Q+16 (previous sibling already holds +1 face turn).
+    # C / this ASM: each m is turns_of[m] quarters ALWAYS from parent Q
+    #   child = apply(states[g], m);  never read Q+from_off as multi-turn src.
+    # Mixing from_off + turns_of double-counts (e.g. D2-state falsely solved
+    # as D'). from_off[] is kept in .data for a later sibling-1q opt only.
+    #
+    # Pipeline: Fsrc=Q → turns quarters with ping-pong Q+16↔scratch →
+    # result must sit at Q+16 before heuristic_core.
+    # -----------------------------------------------------------------
 no_prev:
-    # apply: turns_of[m] quarter turns; ping-pong Q+16 ↔ scratch; result @ Q+16
-    lbu     t1, 18(t3)                  # t1 = from_off[m]
-    add     a6, s4, t1                  # a6 = Fsrc = &states[from]
+    mv      a6, s4                      # Fsrc = &states[g] (parent only)
     la      t4, source
     slli    t1, a5, 3                   # face * 8
     add     t4, t4, t1                  # t4 = &source[face][0]
@@ -853,9 +863,58 @@ apply_sw_loop:
     mv      a6, t1
 
 heuristic_core:
-    # child @ Q+16: four-view waterfall; each view: if h > r → search_top
-    # keep a1=m, a5=face; restore s1=MOVES before any prune / after block
-    addi    s1, s4, 16                 # s1 = &states[g+1] (child)
+    # child @ Q+16; keep a1=m, a5=face
+    # r==0: identity → found (len=g+1); else search_top (align C)
+    # r!=0: waterfall s → σ → σ² → inv; each view PDB_NIBBLE, h>r → prune
+    bnez    s3, r0_gate_skip
+
+    li      s1, 9
+    addi    t6, s4, 16                 # &child
+    li      t0, 0
+    li      t1, 7
+r0_id:
+    lbu     t2, 0(t6)                  # p[i]
+    bne     t0, t2, search_top         # unsolved, r==0 → prune
+    lbu     t2, 7(t6)                  # o[i]
+    bnez    t2, search_top
+    addi    t0, t0, 1
+    addi    t6, t6, 1
+    bne     t0, t1, r0_id
+
+    sb      a1, 0(s5)                  # path[g] = m
+    addi    s2, s2, 1                  # length = g+1 for found
+    j       found
+
+r0_gate_skip:
+    # PDB_NIBBLE: t6=a, t4=o → t0=h; li s1=MOVES; if h>r → search_top
+    # clobbers t1-t3, t4 (parity scratch)
+    .macro  PDB_NIBBLE
+    slli    t0, t6, 9
+    slli    t1, t6, 7
+    add     t0, t0, t1
+    slli    t1, t6, 6
+    add     t0, t0, t1
+    slli    t1, t6, 4
+    add     t0, t0, t1
+    slli    t1, t6, 3
+    add     t0, t0, t1
+    add     t0, t0, t6
+    add     t0, t0, t4                 # idx = a*729 + o
+
+    srli    t1, t0, 1
+    add     t2, t1, s8                 # &pdb[idx>>1]
+    lbu     t3, 0(t2)
+    andi    t4, t0, 1
+    slli    t4, t4, 2
+    srl     t3, t3, t4
+    andi    t0, t3, 15                 # t0 = h
+
+    li      s1, 9
+    bltu    s3, t0, search_top         # r < h → prune
+    .endm
+
+    # --- h(s): pos in scratch; fold o; PDB_NIBBLE ---
+    addi    s1, s4, 16                 # s1 = &child.p[0]
 
     # build pos[]: scratch[p[i]] = i
     li      t0, 0
@@ -892,103 +951,11 @@ loop_heuristic_core_o:
     addi    s1, s1, 1
     bne     t0, t1, loop_heuristic_core_o
 
-    # idx = a*729 + o; pdb nibble → t0 = h(child); prune if t0 > r
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4                 # idx
-
-    srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx >> 1]
-    lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
-    srl     t3, t3, t4
-    andi    t0, t3, 15                 # t0 = h(child)
-
-    li      s1, 9
-    blt     s3, t0, search_top         # r < h → prune
-
-    # ---------------------------------------------------------------------
-    # h_pos3ori(inv(child)) — waterfall vs r (not max into s0)
-    #
-    # Shortcut: arank[child.p[0]<<6|p[3]<<3|p[6]];
-    #   scratch[j] from h(s) = inv.p[j]; inv.o[j]=mod3(3-o[scratch[j]])
-    # ---------------------------------------------------------------------
-    addi    s1, s4, 16
-    addi    s1, s1, 7                  # &child.o[0]
-
-    # a = arank[child.p[0]<<6 | p[3]<<3 | p[6]]
-    addi    t0, s4, 16
-    lbu     t1, 0(t0)                  # child.p[0]
-    lbu     t2, 3(t0)                  # child.p[3]
-    lbu     t3, 6(t0)                  # child.p[6]
-    slli    t4, t1, 6
-    slli    t5, t2, 3
-    or      t4, t4, t5
-    or      t4, t4, t3
-    add     t6, t4, s7
-    lbu     t6, 0(t6)                  # a = arank[...]
-
-    # fold inv.o[0..5]: o=(3-s.o[i])%3, i=scratch[j]
-    li      t0, 0
-    li      t1, 6
-    li      t4, 0                       # o fold = 0
-    li      t5, 3                       # for (3-x)%3
-loop_heuristic_core_inv_o:
-    add     t2, s9, t0
-    lbu     t2, 0(t2)                  # i = scratch[j] = inv.p[j]
-    add     t2, s1, t2
-    lbu     t2, 0(t2)                  # s.o[i]
-    sub     t3, t5, t2                 # 3 - s.o[i]
-    bne     t3, t5, loop_heuristic_core_inv_o_skip
-    sub     t3, t5, t3                 # if 3: → 0  ((3-0)%3)
-loop_heuristic_core_inv_o_skip:
-    slli    t2, t4, 1
-    add     t4, t4, t2                 # o*3
-    add     t4, t4, t3                 # + inv.o[j]
-    addi    t0, t0, 1
-    bne     t0, t1, loop_heuristic_core_inv_o
-
-    # idx = a*729 + o; t0 = h(inv); prune if > r
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4
-
-    srli    t1, t0, 1
-    add     t2, t1, s8
-    lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
-    srl     t3, t3, t4
-    andi    t0, t3, 15
-
-    li      s1, 9
-    blt     s3, t0, search_top         # r < h → prune
+    PDB_NIBBLE
 
 
-    # ---------------------------------------------------------------------
-    # h_pos3ori(σ(child)) — y = sym3(child) @ scratch; prune if h(y) > r
-    #
-    # y.p[sig[i]] = sig[p[i]];
-    # y.o[sig[i]] = (o[i]+3+kk[i]-kk[p[i]])%3
-    # s1 = child; after: scratch[0..6]=y.p [7..13]=y.o | [14..27] for z
-    # ---------------------------------------------------------------------
+    # --- h(σ(child)): y @ scratch[0..13]; then PDB_NIBBLE ---
+    # y.p[sig[i]]=sig[p[i]]; y.o[sig[i]]=(o+3+kk[i]-kk[p[i]])%3
     addi    s1, s4, 16
     la      t5, sig                     # &sig[0]; kk at t5+7
 
@@ -1079,36 +1046,12 @@ loop_heuristic_core_sym_o_index:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_sym_o_index
 
-    # idx = a*729 + o; t0 = h(y); prune if > r
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4
+    PDB_NIBBLE
 
-    srli    t1, t0, 1
-    add     t2, t1, s8
-    lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
-    srl     t3, t3, t4
-    andi    t0, t3, 15
 
-    li      s1, 9
-    blt     s3, t0, search_top         # r < h → prune
-
-    # ---------------------------------------------------------------------
-    # h_pos3ori(σ²) — z = sym3(y); in=y@S+0, out=z@S+14; prune if h(z) > r
-    # s1 = &y (scratch), not child / states
-    # ---------------------------------------------------------------------
-    mv      s1, s9
-    la      t5, sig                     # &sig[0]; kk at t5+7
+    # --- h(σ²): z = sym3(y); in=y@S+0, out=z@S+14; PDB_NIBBLE ---
+    mv      s1, s9                      # y.p[0], not child
+    la      t5, sig                     # reload (σ index clobbered t5)
 
     # build z.p[sig[i]] = sig[y.p[i]]
     li      t0, 0
@@ -1197,32 +1140,58 @@ loop_heuristic_core_sym2_o_index:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_sym2_o_index
 
-    # idx = a*729 + o; t0 = h(z); prune if > r
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4
+    PDB_NIBBLE
 
-    srli    t1, t0, 1
-    add     t2, t1, s8
-    lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
-    srl     t3, t3, t4
-    andi    t0, t3, 15
 
-    li      s1, 9
-    blt     s3, t0, search_top         # r < h → prune
+    # --- h(inv): rebuild pos (scratch was y/z); arank from child.p[0|3|6] ---
+    addi    s1, s4, 16                 # &child.p[0]; rebuild pos after σ
 
-    # push, then identity on states[g+1]; solved → found, else child (m=0)
-    # path[g]=m; pface[g+1]=face; g++; r--; Q+=16; P+=1
+    # build pos[]: scratch[p[i]] = i  (= inv.p)
+    li      t0, 0
+    li      t1, 7
+loop_heuristic_core_inv_p:
+    lbu     t2, 0(s1)                  # p[i]
+    add     t3, t2, s9
+    sb      t0, 0(t3)                  # scratch[p[i]] = i
+    addi    t0, t0, 1
+    addi    s1, s1, 1
+    bne     t0, t1, loop_heuristic_core_inv_p
+
+    # a = arank[child.p[0]<<6 | p[3]<<3 | p[6]]
+    addi    t0, s4, 16
+    lbu     t1, 0(t0)                  # child.p[0]
+    lbu     t2, 3(t0)                  # child.p[3]
+    lbu     t3, 6(t0)                  # child.p[6]
+    slli    t4, t1, 6
+    slli    t5, t2, 3
+    or      t4, t4, t5
+    or      t4, t4, t3
+    add     t6, t4, s7
+    lbu     t6, 0(t6)                  # a = arank[...]
+
+    # fold inv.o[0..5]: o=(3-s.o[i])%3, i=scratch[j]
+    li      t0, 0
+    li      t1, 6
+    li      t4, 0                       # o fold = 0
+    li      t5, 3                       # for (3-x)%3
+loop_heuristic_core_inv_o:
+    add     t2, s9, t0
+    lbu     t2, 0(t2)                  # i = scratch[j] = inv.p[j]
+    add     t2, s1, t2
+    lbu     t2, 0(t2)                  # s.o[i]
+    sub     t3, t5, t2                 # 3 - s.o[i]
+    bne     t3, t5, loop_heuristic_core_inv_o_skip
+    sub     t3, t5, t3                 # if 3: → 0  ((3-0)%3)
+loop_heuristic_core_inv_o_skip:
+    slli    t2, t4, 1
+    add     t4, t4, t2                 # o*3
+    add     t4, t4, t3                 # + inv.o[j]
+    addi    t0, t0, 1
+    bne     t0, t1, loop_heuristic_core_inv_o
+
+    PDB_NIBBLE
+
+    # all views h <= r: push; identity → found, else deepen (m=0)
     sb      a1,  0(s5)                  # path[g] = m
     li      a1, 0                       # a1 = m = 0 for the child
     sb      a5, 24(s5)                  # pface[g + 1] = face_of[m] (P + 24)
@@ -1278,10 +1247,7 @@ found_length_loop_skip2:
 
     addi    t5, t5, 1
 
-
     bltu    s11, t5, found_cap_fail 
-
-
 
     li      t0, 0
     mv      t4, s10                     # out cursor

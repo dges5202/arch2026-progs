@@ -1,0 +1,7 @@
+@@d11_asm N=2644 bad=0
+@@d11_asm sum_cycles=2181165981
+@@d11_asm min=335672 idx=2483 state=75346122133133
+@@d11_asm max=4541103 idx=188 state=14325671111111
+@@d11_asm p50=756751 p90=1181735 p99=2031730
+@@d11_asm note=rv32emu_cycle_eq_instret CPI=1
+wall 4.91
