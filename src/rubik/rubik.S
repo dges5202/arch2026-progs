@@ -754,36 +754,30 @@ child:
     beq     t5, a5, same_face           # same face as path[g - 1]: skip it
 
     # -----------------------------------------------------------------
-    # apply (C-style, matches rubik.c) — NOT HW1 from_off chaining
-    #
-    # HW1 from_off: each m is ONE quarter from sibling
-    #   R  ← Q+0;  R2/R' ← Q+16 (previous sibling already holds +1 face turn).
-    # C / this ASM: each m is turns_of[m] quarters ALWAYS from parent Q
-    #   child = apply(states[g], m);  never read Q+from_off as multi-turn src.
-    # Mixing from_off + turns_of double-counts (e.g. D2-state falsely solved
-    # as D'). from_off[] is kept in .data for a later sibling-1q opt only.
-    #
-    # Pipeline: Fsrc=Q → turns quarters with ping-pong Q+16↔scratch →
-    # result must sit at Q+16 before heuristic_core.
+    # apply v4b: always ONE quarter; src = Q + from_off[m]
+    #   R/B/D:  off=0  → parent Q → dest Q+16
+    #   R2/R':  off=16 → sibling at Q+16 → dest scratch → copy to Q+16
+    # Equiv. to C apply(parent,m) when moves tried in face order; do NOT
+    # also multiply by turns_of (that double-counts).
     # -----------------------------------------------------------------
 no_prev:
-    mv      a6, s4                      # Fsrc = &states[g] (parent only)
     la      t4, source
     slli    t1, a5, 3                   # face * 8
     add     t4, t4, t1                  # t4 = &source[face][0]
     la      t5, twist
     add     t5, t5, t1                  # t5 = &twist[face][0]
-    lbu     a2, 9(t3)                   # a2 = turns_of[m]
 
+    lbu     t0, 18(t3)                  # t0 = from_off[m]
+    add     a6, s4, t0
+    addi    a0, s4, 16                  # Q + 16
 
-    li      t0, 1
-    bne     a2, t0, apply_out
-
+    beqz    t0, apply_1q_skip
+    mv      a0, s9                      # sibling: dest = scratch
+apply_1q_skip:
     li      t0, 7
     li      t2, 3
-    addi    a0, s4, 16
 
-apply_q_loop:
+apply_1q:
     addi    t0, t0, -1
     add     t1, t4, t0
     lbu     t1, 0(t1)          # from = source[face][i]
@@ -799,62 +793,20 @@ apply_q_loop:
     lbu     t1, 0(t1)          # twist[face][i]
     add     t6, t6, t1         # o + twist
 
-    bltu    t6, t2, apply_q_mod
+    bltu    t6, t2, apply_1q_mod
     sub     t6, t6, t2             
-apply_q_mod:
+apply_1q_mod:
     sb      t6, 7(t3)
-
-    bnez    t0, apply_q_loop
-
-    j       heuristic_core
+    bnez    t0, apply_1q
 
 
-
-apply_out:
-    # dest = (src == Q+16) ? scratch : Q+16
-    li      t0, 7
-    li      t2, 3
-    addi    t3, s4, 16
-    mv      a0, t3
-    bne     a6, t3, apply_in
-    mv      a0, s9
-
-apply_in:
-    addi    t0, t0, -1
-    add     t1, t4, t0
-    lbu     t1, 0(t1)          # from = source[face][i]
-
-    add     t6, a6, t1
-    lbu     t6, 0(t6)          # sb to dest.p[i]
-    add     t3, a0, t0
-    sb      t6, 0(t3)
-
-    add     t6, a6, t1
-    lbu     t6, 7(t6)          # o
-    add     t1, t5, t0
-    lbu     t1, 0(t1)          # twist[face][i]
-    add     t6, t6, t1         # o + twist
-
-    bltu    t6, t2, apply_in_mod
-    sub     t6, t6, t2             
-apply_in_mod:
-    sb      t6, 7(t3)
-
-    bnez    t0, apply_in
-    mv      a6, a0
-
-    addi    a2, a2, -1
-    bnez    a2, apply_out
-
-apply_done:
-    # ensure child at Q+16 (copy 14B if last dest was scratch)
     addi    t1, s4, 16
-    beq     a6, t1, heuristic_core
+    beq     a0, t1, heuristic_core
 
     li      t0, 14
 apply_sw_loop:
     addi    t0, t0, -1
-    add     t2, a6, t0
+    add     t2, a0, t0
     lbu     t2, 0(t2)
     add     t3, t1, t0
     sb      t2, 0(t3)

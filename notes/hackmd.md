@@ -58,8 +58,10 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 | **v3** | PDB stride 1024; idx=`(a<<10)+o` (C+ASM same table) | **801,047** | **2.18× faster** (C mean **1,742,455**) | min CPI **1.359** / max **1.357** | **−2.9% vs v2b** emu; 5ST cycles also best |
 | | | p50 735k / max 4.42M; budget ok | | | 5ST cycles min **441,957** / max **5,997,626** |
 | **v4a** | `turns==1` fast path: parent→`Q+16` one quarter | **801,022** | **2.18× faster** | *(not re-5ST’d; ≈v3)* | ≈v3 (noise); log only |
+| **v4b** | Sibling 1-quarter apply via `from_off` (always 1q) | **685,295** | **2.54× faster** | min CPI **1.359** / max **1.357** | **−14.5% vs v3** emu; big apply win |
+| | | harness ASM **131,708**; 5ST min **380,735** / max **5,121,231** | | | Log [`d11_cmp_v4b.txt`](rubik/results/d11_cmp_v4b.txt) |
 
-Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index.
+Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'.
 
 **Ripes 5ST method:** CLI `RV32_5S` on `rubik_solve_asm` only (tiny ELF), sample states from [`d11_ripes_sample_states.txt`](rubik/results/d11_ripes_sample_states.txt) (emu min/max). JSON + CSV: [`results/ripes_5s/`](rubik/results/ripes_5s/). Full 2644× not run (too slow in GUI/CLI). rv32emu still owns the **mean of 2644** KPI.
 

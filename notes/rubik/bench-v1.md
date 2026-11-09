@@ -50,6 +50,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | ASM `impl_asm.o` v2b | 3180 | 77423 | 80,603 |
 | ASM `impl_asm.o` **v3** | **2892** | **108398** | **111,290** ok |
 | ASM `impl_asm.o` **v4a** | **2980** | **108398** | **111,378** ok |
+| ASM `impl_asm.o` **v4b** | **2876** | **108398** | **111,274** ok |
 
 ## Version table
 
@@ -58,8 +59,9 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v1** | `s→inv→σ→σ²`; C-style apply; parse `sll` | 824,948 | baseline |
 | **v2** | `s→σ→σ²→inv` + macro + `r==0` | 909,588 | regress +10.3% |
 | **v2b** | Restore `s→inv`; reuse pos; keep `r0`+macro | 824,914 | fixed order |
-| **v3** | PDB stride **1024**; idx=`(a<<10)+o` (C+ASM) | **801,047** | **−2.9% vs v2b**; +31KB pdb |
-| **v4a** | `turns==1` fast path parent→`Q+16` | **801,022** | ≈v3; kept as A/B record |
+| **v3** | PDB stride **1024**; idx=`(a<<10)+o` (C+ASM) | 801,047 | −2.9% vs v2b |
+| **v4a** | `turns==1` fast path parent→`Q+16` | 801,022 | ≈v3; A/B record |
+| **v4b** | Sibling 1q via `from_off` (always 1 quarter) | **685,295** | **−14.5% vs v3**; 2.54× vs C |
 
 ## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
 
@@ -75,16 +77,19 @@ v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
 | **v1** | max | 5,799,763 | 4,315,401 | 1.344 | 0.744 |
 | **v2b** | min | 451,668 | 334,854 | 1.349 | 0.741 |
 | **v2b** | max | 6,125,417 | 4,545,976 | 1.347 | 0.742 |
-| **v3** | min | **441,957** | 325,143 | 1.359 | 0.736 |
-| **v3** | max | **5,997,626** | 4,418,185 | 1.357 | 0.737 |
+| **v3** | min | 441,957 | 325,143 | 1.359 | 0.736 |
+| **v3** | max | 5,997,626 | 4,418,185 | 1.357 | 0.737 |
+| **v4b** | min | **380,735** | 280,068 | 1.359 | 0.736 |
+| **v4b** | max | **5,121,231** | 3,775,057 | 1.357 | 0.737 |
 
-Takeaway: v3 still wins on **5ST cycles** for both samples despite a slightly higher CPI (fewer instructions outweigh it). v2b is a bit worse than v1 on these two points (extra `r0`/macro/layout). Not a substitute for the 2644-mean emu KPI.
+Takeaway: v4b cuts both emu mean and 5ST sample cycles sharply (fewer quarter-turns). CPI stays ~1.36. Not a substitute for the 2644-mean emu KPI.
 
 ## Semantics reminder
 
-- Apply: **`mv a6, s4`** then `turns_of[m]` quarters → `Q+16`; v4a shortcuts `turns==1`.
+- Apply **v4b**: always 1 quarter; `src = Q + from_off[m]`; sibling uses scratch then copy to `Q+16`.
 - Parse: **`sll`** when shift amount is a register.
 - Hot inv after `h(s)`: scratch pos = `inv.p`; do **not** rebuild after σ.
 - PDB: **`idx = (a << 10) + o`** (stride 1024 nibble table).
+
 
 
