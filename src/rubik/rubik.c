@@ -22,7 +22,7 @@ static unsigned rank_ori_state(const state_t *s)
     return o;
 }
 
-/* index = a*729 + o ; a from positions of cubies 0,3,6 */
+/* index = (a<<10) + o ; a from positions of cubies 0,3,6 (stride 1024) */
 static unsigned pdb_index(const state_t *s)
 {
     uint8_t pos[CUBIES];
@@ -30,9 +30,7 @@ static unsigned pdb_index(const state_t *s)
         pos[s->p[i]] = (uint8_t) i;
     unsigned a = rubik_arank[pos[0] << 6 | pos[3] << 3 | pos[6]];
     unsigned o = rank_ori_state(s);
-    /* a * 729 = a*(512+128+64+16+8+1) */
-    unsigned a729 = (a << 9) + (a << 7) + (a << 6) + (a << 4) + (a << 3) + a;
-    return a729 + o;
+    return (a << 10) + o;
 }
 
 static unsigned pdb_get(unsigned idx)

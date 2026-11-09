@@ -253,10 +253,10 @@ heuristic_start:
     # Verified vs C on 7k+ states (inv shortcut + sym3 %3 path): OK.
     #
     # pdb_index: a=arank[pos0<<6|pos3<<3|pos6]; o=fold o[0..5];
-    #            idx=a*729+o; nibble from rubik_pdb.
+    #            idx=(a<<10)+o; nibble from rubik_pdb (stride 1024).
     # Scratch: after h(s), [0..6]=pos=inv.p; σ: y@0..13; σ²: z@14..27.
     # s7=A, s8=D, s9=S live through all four views.
-    # LATER optional: pad stride 729→1024 → idx=(a<<10)+o (~+31KB pdb).
+    # PDB packed with stride 1024; guest idx=(a<<10)+o.
     # -------
 
     # ---------------------------------------------------------------------
@@ -264,7 +264,7 @@ heuristic_start:
     #
     # C:  h = pdb_get(pdb_index(s));
     #     /* pos[p[i]]=i; a=arank[pos[0]<<6|pos[3]<<3|pos[6]];
-    #        o=fold s.o[0..5]; return nibble(a*729+o) */
+    #        o=fold s.o[0..5]; return nibble((a<<10)+o) */
     # ---------------------------------------------------------------------
     la      s1, states                  # cursor at s.p[0]
     la      s7, rubik_arank             # s7 = A = &rubik_arank[0]
@@ -306,21 +306,12 @@ loop_heuristic_o:
     addi    s1, s1, 1
     bne     t0, t1, loop_heuristic_o
 
-    # idx = a*729 + o; pdb nibble → s0 (first h, no max yet)
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4                 # idx
+    # idx = a*1024 + o; pdb nibble → s0 (first h, no max yet)
+    slli    t0, t6, 10
+    add     t0, t0, t4                 # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx >> 1]
+    add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
     andi    t4, t0, 1
     slli    t4, t4, 2
@@ -371,21 +362,12 @@ loop_heuristic_inv_o_skip:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_inv_o
 
-    # idx = a*729 + o; pdb nibble; max into s0
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4
+    # idx = a*1024 + o; pdb nibble → s0 (first h, no max yet)
+    slli    t0, t6, 10
+    add     t0, t0, t4                 # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8
+    add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
     andi    t4, t0, 1
     slli    t4, t4, 2
@@ -499,21 +481,12 @@ loop_heuristic_sym_o_index:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_sym_o_index
 
-    # idx = a*729 + o; pdb nibble; max into s0
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4
+    # idx = a*1024 + o; pdb nibble → s0 (first h, no max yet)
+    slli    t0, t6, 10
+    add     t0, t0, t4                 # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8
+    add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
     andi    t4, t0, 1
     slli    t4, t4, 2
@@ -629,21 +602,12 @@ loop_heuristic_sym2_o_index:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_sym2_o_index
 
-    # idx = a*729 + o; pdb nibble; max into s0
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4
+    # idx = a*1024 + o; pdb nibble → s0 (first h, no max yet)
+    slli    t0, t6, 10
+    add     t0, t0, t4                 # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8
+    add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
     andi    t4, t0, 1
     slli    t4, t4, 2
@@ -890,17 +854,8 @@ r0_gate_skip:
     # PDB_NIBBLE: t6=a, t4=o → t0=h; li s1=MOVES; if h>r → search_top
     # clobbers t1-t3, t4 (parity scratch)
     .macro  PDB_NIBBLE
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4                 # idx = a*729 + o
+    slli    t0, t6, 10
+    add     t0, t0, t4                 # idx = a*1024 + o
 
     srli    t1, t0, 1
     add     t2, t1, s8                 # &pdb[idx>>1]

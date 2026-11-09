@@ -55,8 +55,10 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 | **v2−macro** | Same order+`r0`; inline nibble (macro unused) | **909,588** | 1.97× | *TBD* | **≡ v2** → macro not the cost; [`d11_cmp_v2_nomacro.txt`](rubik/results/d11_cmp_v2_nomacro.txt) |
 | **v2b** | Restore `s→inv→σ→σ²`; reuse `h(s)` pos; keep `r0`+macro | **824,914** | **2.17× faster** | *TBD* | **fixed**; ≈v1 d11; harness **156,924** (−3.4% vs v1) |
 | | | p50 756k / max 4.55M; `.text` 3180 | | | Log [`d11_cmp_v2b_s_inv.txt`](rubik/results/d11_cmp_v2b_s_inv.txt) |
+| **v3** | PDB stride 1024; idx=`(a<<10)+o` (C+ASM same table) | **801,047** | **2.18× faster** (C mean **1,742,455**) | *TBD* | **−2.9% vs v2b**; harness ASM **152,523**; `.text` 2892 / data 108398 |
+| | | p50 735k / max 4.42M; budget ok (111290 < 128KiB) | | | Log [`d11_cmp_v3.txt`](rubik/results/d11_cmp_v3.txt) |
 
-Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent.
+Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index.
 
 Ripes **5ST**: same `rubik_solve_asm` on min/max sample states in `notes/rubik/results/d11_ripes_sample_states.txt` (emu does not model 5-stage).
 
