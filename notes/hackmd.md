@@ -57,6 +57,8 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 | | | p50 756k / max 4.55M; `.text` 3180 | | | Log [`d11_cmp_v2b_s_inv.txt`](rubik/results/d11_cmp_v2b_s_inv.txt) |
 | **v3** | PDB stride 1024; idx=`(a<<10)+o` (C+ASM same table) | **801,047** | **2.18× faster** (C mean **1,742,455**) | *TBD* | **−2.9% vs v2b**; harness ASM **152,523**; `.text` 2892 / data 108398 |
 | | | p50 735k / max 4.42M; budget ok (111290 < 128KiB) | | | Log [`d11_cmp_v3.txt`](rubik/results/d11_cmp_v3.txt) |
+| **v4a** | `turns==1` fast path: parent→`Q+16` one quarter | **801,022** | **2.18× faster** | *TBD* | ≈v3 (noise); apply still dominated by heuristic; log only |
+| | | harness ASM 152,465; `.text` 2980 | | | Log [`d11_cmp_v4a.txt`](rubik/results/d11_cmp_v4a.txt) |
 
 Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index.
 

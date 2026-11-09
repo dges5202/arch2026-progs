@@ -49,6 +49,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | C `O2/impl.o` v3 | (in ELF) | pdb 107520 + arank | **110,298** ok |
 | ASM `impl_asm.o` v2b | 3180 | 77423 | 80,603 |
 | ASM `impl_asm.o` **v3** | **2892** | **108398** | **111,290** ok |
+| ASM `impl_asm.o` **v4a** | **2980** | **108398** | **111,378** ok |
 
 ## Version table
 
@@ -58,10 +59,12 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v2** | `s→σ→σ²→inv` + macro + `r==0` | 909,588 | regress +10.3% |
 | **v2b** | Restore `s→inv`; reuse pos; keep `r0`+macro | 824,914 | fixed order |
 | **v3** | PDB stride **1024**; idx=`(a<<10)+o` (C+ASM) | **801,047** | **−2.9% vs v2b**; +31KB pdb |
+| **v4a** | `turns==1` fast path parent→`Q+16` | **801,022** | ≈v3; kept as A/B record |
 
 ## Semantics reminder
 
-- Apply: **`mv a6, s4`** then `turns_of[m]` quarters → `Q+16`.
+- Apply: **`mv a6, s4`** then `turns_of[m]` quarters → `Q+16`; v4a shortcuts `turns==1`.
 - Parse: **`sll`** when shift amount is a register.
 - Hot inv after `h(s)`: scratch pos = `inv.p`; do **not** rebuild after σ.
 - PDB: **`idx = (a << 10) + o`** (stride 1024 nibble table).
+

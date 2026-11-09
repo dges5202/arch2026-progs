@@ -775,6 +775,41 @@ no_prev:
     add     t5, t5, t1                  # t5 = &twist[face][0]
     lbu     a2, 9(t3)                   # a2 = turns_of[m]
 
+
+    li      t0, 1
+    bne     a2, t0, apply_out
+
+    li      t0, 7
+    li      t2, 3
+    addi    a0, s4, 16
+
+apply_q_loop:
+    addi    t0, t0, -1
+    add     t1, t4, t0
+    lbu     t1, 0(t1)          # from = source[face][i]
+
+    add     t6, a6, t1
+    lbu     t6, 0(t6)          # sb to dest.p[i]
+    add     t3, a0, t0
+    sb      t6, 0(t3)
+
+    add     t6, a6, t1
+    lbu     t6, 7(t6)          # o
+    add     t1, t5, t0
+    lbu     t1, 0(t1)          # twist[face][i]
+    add     t6, t6, t1         # o + twist
+
+    bltu    t6, t2, apply_q_mod
+    sub     t6, t6, t2             
+apply_q_mod:
+    sb      t6, 7(t3)
+
+    bnez    t0, apply_q_loop
+
+    j       heuristic_core
+
+
+
 apply_out:
     # dest = (src == Q+16) ? scratch : Q+16
     li      t0, 7
