@@ -61,10 +61,30 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v3** | PDB stride **1024**; idx=`(a<<10)+o` (C+ASM) | **801,047** | **−2.9% vs v2b**; +31KB pdb |
 | **v4a** | `turns==1` fast path parent→`Q+16` | **801,022** | ≈v3; kept as A/B record |
 
+## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
+
+Tool: Ripes continuous CLI (`--mode cli --proc RV32_5S --cycles --iret --cpi`).  
+Workload: one `rubik_solve_asm(state)` then exit (not the course harness).  
+States: emu min `75346122133133`, emu max `14325671111111`.  
+Artifacts: [`results/ripes_5s/`](results/ripes_5s/) (`summary.csv`, per-run JSON).  
+v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
+
+| Ver | role | cycles | instret | CPI | IPC |
+|-----|------|-------:|--------:|----:|----:|
+| **v1** | min | 442,606 | 328,717 | 1.346 | 0.743 |
+| **v1** | max | 5,799,763 | 4,315,401 | 1.344 | 0.744 |
+| **v2b** | min | 451,668 | 334,854 | 1.349 | 0.741 |
+| **v2b** | max | 6,125,417 | 4,545,976 | 1.347 | 0.742 |
+| **v3** | min | **441,957** | 325,143 | 1.359 | 0.736 |
+| **v3** | max | **5,997,626** | 4,418,185 | 1.357 | 0.737 |
+
+Takeaway: v3 still wins on **5ST cycles** for both samples despite a slightly higher CPI (fewer instructions outweigh it). v2b is a bit worse than v1 on these two points (extra `r0`/macro/layout). Not a substitute for the 2644-mean emu KPI.
+
 ## Semantics reminder
 
 - Apply: **`mv a6, s4`** then `turns_of[m]` quarters → `Q+16`; v4a shortcuts `turns==1`.
 - Parse: **`sll`** when shift amount is a register.
 - Hot inv after `h(s)`: scratch pos = `inv.p`; do **not** rebuild after σ.
 - PDB: **`idx = (a << 10) + o`** (stride 1024 nibble table).
+
 

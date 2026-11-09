@@ -47,22 +47,21 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 
 | Ver | Change | d11 mean (ASM) | vs GCC `-O2` d11 | 5ST (Ripes) | Why |
 |-----|--------|---------------:|-----------------:|------------:|-----|
-| **v1** | IDA* + waterfall `s→inv→σ→σ²`; C-style apply; parse `sll` | **824,948** | **2.17× faster** (C mean 1,789,077) | *TBD* | First correct ASM; beats `-O2` on all 2644 d11 states |
-| | | p50 757k / max 4.54M; harness 6-depth: ASM 162k vs C 331k (2.04×) | | | Detail: [`rubik/bench-v1.md`](rubik/bench-v1.md) |
-| **v2** | Reorder `s→σ→σ²→inv`; `PDB_NIBBLE`; `r==0` gate | **909,588** | **1.97× faster** | *TBD* | **+10.3% vs v1** (regress); inv rebuilt after σ |
+| **v1** | IDA* + waterfall `s→inv→σ→σ²`; C-style apply; parse `sll` | **824,948** | **2.17× faster** (C mean 1,789,077) | min CPI **1.346** / max **1.344** | First correct ASM; beats `-O2` on all 2644 d11 states |
+| | | p50 757k / max 4.54M; harness 6-depth: ASM 162k vs C 331k (2.04×) | | | 5ST cycles min **442,606** / max **5,799,763** |
+| **v2** | Reorder `s→σ→σ²→inv`; `PDB_NIBBLE`; `r==0` gate | **909,588** | **1.97× faster** | *(bisect; not 5ST’d)* | **+10.3% vs v1** (regress); inv rebuilt after σ |
 | | | p50 828k / max 5.06M; harness ASM 174k (+6.9% vs v1) | | | Log [`d11_cmp_cO2_vs_asm_v2.txt`](rubik/results/d11_cmp_cO2_vs_asm_v2.txt) |
-| **v2−r0** | Same as v2 but drop `r==0` gate | **909,626** | 1.97× | *TBD* | ≈v2 → **not** the +10%; [`d11_cmp_v2_nor0.txt`](rubik/results/d11_cmp_v2_nor0.txt) |
-| **v2−macro** | Same order+`r0`; inline nibble (macro unused) | **909,588** | 1.97× | *TBD* | **≡ v2** → macro not the cost; [`d11_cmp_v2_nomacro.txt`](rubik/results/d11_cmp_v2_nomacro.txt) |
-| **v2b** | Restore `s→inv→σ→σ²`; reuse `h(s)` pos; keep `r0`+macro | **824,914** | **2.17× faster** | *TBD* | **fixed**; ≈v1 d11; harness **156,924** (−3.4% vs v1) |
-| | | p50 756k / max 4.55M; `.text` 3180 | | | Log [`d11_cmp_v2b_s_inv.txt`](rubik/results/d11_cmp_v2b_s_inv.txt) |
-| **v3** | PDB stride 1024; idx=`(a<<10)+o` (C+ASM same table) | **801,047** | **2.18× faster** (C mean **1,742,455**) | *TBD* | **−2.9% vs v2b**; harness ASM **152,523**; `.text` 2892 / data 108398 |
-| | | p50 735k / max 4.42M; budget ok (111290 < 128KiB) | | | Log [`d11_cmp_v3.txt`](rubik/results/d11_cmp_v3.txt) |
-| **v4a** | `turns==1` fast path: parent→`Q+16` one quarter | **801,022** | **2.18× faster** | *TBD* | ≈v3 (noise); apply still dominated by heuristic; log only |
-| | | harness ASM 152,465; `.text` 2980 | | | Log [`d11_cmp_v4a.txt`](rubik/results/d11_cmp_v4a.txt) |
+| **v2−r0** | Same as v2 but drop `r==0` gate | **909,626** | 1.97× | — | ≈v2 → **not** the +10% |
+| **v2−macro** | Same order+`r0`; inline nibble (macro unused) | **909,588** | 1.97× | — | **≡ v2** → macro not the cost |
+| **v2b** | Restore `s→inv→σ→σ²`; reuse `h(s)` pos; keep `r0`+macro | **824,914** | **2.17× faster** | min CPI **1.349** / max **1.347** | **fixed**; ≈v1 emu; harness **156,924** |
+| | | p50 756k / max 4.55M; `.text` 3180 | | | 5ST cycles min **451,668** / max **6,125,417** |
+| **v3** | PDB stride 1024; idx=`(a<<10)+o` (C+ASM same table) | **801,047** | **2.18× faster** (C mean **1,742,455**) | min CPI **1.359** / max **1.357** | **−2.9% vs v2b** emu; 5ST cycles also best |
+| | | p50 735k / max 4.42M; budget ok | | | 5ST cycles min **441,957** / max **5,997,626** |
+| **v4a** | `turns==1` fast path: parent→`Q+16` one quarter | **801,022** | **2.18× faster** | *(not re-5ST’d; ≈v3)* | ≈v3 (noise); log only |
 
 Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index.
 
-Ripes **5ST**: same `rubik_solve_asm` on min/max sample states in `notes/rubik/results/d11_ripes_sample_states.txt` (emu does not model 5-stage).
+**Ripes 5ST method:** CLI `RV32_5S` on `rubik_solve_asm` only (tiny ELF), sample states from [`d11_ripes_sample_states.txt`](rubik/results/d11_ripes_sample_states.txt) (emu min/max). JSON + CSV: [`results/ripes_5s/`](rubik/results/ripes_5s/). Full 2644× not run (too slow in GUI/CLI). rv32emu still owns the **mean of 2644** KPI.
 
 ## 1.6 RV32I improvements
 
