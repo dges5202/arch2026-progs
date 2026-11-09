@@ -50,7 +50,11 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 | **v1** | IDA* + waterfall `s→inv→σ→σ²`; C-style apply; parse `sll` | **824,948** | **2.17× faster** (C mean 1,789,077) | *TBD* | First correct ASM; beats `-O2` on all 2644 d11 states |
 | | | p50 757k / max 4.54M; harness 6-depth: ASM 162k vs C 331k (2.04×) | | | Detail: [`rubik/bench-v1.md`](rubik/bench-v1.md) |
 | **v2** | Reorder `s→σ→σ²→inv`; `PDB_NIBBLE`; `r==0` gate | **909,588** | **1.97× faster** | *TBD* | **+10.3% vs v1** (regress); 52/52, d11 bad=0; still beats C on all 2644 |
-| | | p50 828k / max 5.06M; harness ASM 174k (+6.9% vs v1) | | | Lesson: measure each micro-step; log [`d11_cmp_cO2_vs_asm_v2.txt`](rubik/results/d11_cmp_cO2_vs_asm_v2.txt) |
+| | | p50 828k / max 5.06M; harness ASM 174k (+6.9% vs v1) | | | Log [`d11_cmp_cO2_vs_asm_v2.txt`](rubik/results/d11_cmp_cO2_vs_asm_v2.txt) |
+| **v2−r0** | Same as v2 but drop `r==0` gate | **909,626** | 1.97× | *TBD* | ≈v2 → **not** the +10%; [`d11_cmp_v2_nor0.txt`](rubik/results/d11_cmp_v2_nor0.txt) |
+| **v2−macro** | Same order+`r0`; inline nibble (macro unused) | **909,588** | 1.97× | *TBD* | **≡ v2** bit-identical sum → macro not the cost; [`d11_cmp_v2_nomacro.txt`](rubik/results/d11_cmp_v2_nomacro.txt) |
+
+Bisect so far: **suspect waterfall reorder** (`s→σ→σ²→inv`). Next: restore `s→inv→σ→σ²`, keep inline nibble + `r0`.
 
 Ripes **5ST**: same `rubik_solve_asm` on min/max sample states in `notes/rubik/results/d11_ripes_sample_states.txt` (emu does not model 5-stage).
 

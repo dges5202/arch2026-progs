@@ -951,7 +951,28 @@ loop_heuristic_core_o:
     addi    s1, s1, 1
     bne     t0, t1, loop_heuristic_core_o
 
-    PDB_NIBBLE
+    slli    t0, t6, 9
+    slli    t1, t6, 7
+    add     t0, t0, t1
+    slli    t1, t6, 6
+    add     t0, t0, t1
+    slli    t1, t6, 4
+    add     t0, t0, t1
+    slli    t1, t6, 3
+    add     t0, t0, t1
+    add     t0, t0, t6
+    add     t0, t0, t4                 # idx = a*729 + o
+
+    srli    t1, t0, 1
+    add     t2, t1, s8                 # &pdb[idx>>1]
+    lbu     t3, 0(t2)
+    andi    t4, t0, 1
+    slli    t4, t4, 2
+    srl     t3, t3, t4
+    andi    t0, t3, 15                 # t0 = h
+
+    li      s1, 9
+    bltu    s3, t0, search_top         # r < h → prune
 
 
     # --- h(σ(child)): y @ scratch[0..13]; then PDB_NIBBLE ---
@@ -1046,7 +1067,28 @@ loop_heuristic_core_sym_o_index:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_sym_o_index
 
-    PDB_NIBBLE
+    slli    t0, t6, 9
+    slli    t1, t6, 7
+    add     t0, t0, t1
+    slli    t1, t6, 6
+    add     t0, t0, t1
+    slli    t1, t6, 4
+    add     t0, t0, t1
+    slli    t1, t6, 3
+    add     t0, t0, t1
+    add     t0, t0, t6
+    add     t0, t0, t4                 # idx = a*729 + o
+
+    srli    t1, t0, 1
+    add     t2, t1, s8                 # &pdb[idx>>1]
+    lbu     t3, 0(t2)
+    andi    t4, t0, 1
+    slli    t4, t4, 2
+    srl     t3, t3, t4
+    andi    t0, t3, 15                 # t0 = h
+
+    li      s1, 9
+    bltu    s3, t0, search_top         # r < h → prune
 
 
     # --- h(σ²): z = sym3(y); in=y@S+0, out=z@S+14; PDB_NIBBLE ---
@@ -1140,7 +1182,28 @@ loop_heuristic_core_sym2_o_index:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_sym2_o_index
 
-    PDB_NIBBLE
+    slli    t0, t6, 9
+    slli    t1, t6, 7
+    add     t0, t0, t1
+    slli    t1, t6, 6
+    add     t0, t0, t1
+    slli    t1, t6, 4
+    add     t0, t0, t1
+    slli    t1, t6, 3
+    add     t0, t0, t1
+    add     t0, t0, t6
+    add     t0, t0, t4                 # idx = a*729 + o
+
+    srli    t1, t0, 1
+    add     t2, t1, s8                 # &pdb[idx>>1]
+    lbu     t3, 0(t2)
+    andi    t4, t0, 1
+    slli    t4, t4, 2
+    srl     t3, t3, t4
+    andi    t0, t3, 15                 # t0 = h
+
+    li      s1, 9
+    bltu    s3, t0, search_top         # r < h → prune
 
 
     # --- h(inv): rebuild pos (scratch was y/z); arank from child.p[0|3|6] ---
@@ -1189,7 +1252,28 @@ loop_heuristic_core_inv_o_skip:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_inv_o
 
-    PDB_NIBBLE
+    slli    t0, t6, 9
+    slli    t1, t6, 7
+    add     t0, t0, t1
+    slli    t1, t6, 6
+    add     t0, t0, t1
+    slli    t1, t6, 4
+    add     t0, t0, t1
+    slli    t1, t6, 3
+    add     t0, t0, t1
+    add     t0, t0, t6
+    add     t0, t0, t4                 # idx = a*729 + o
+
+    srli    t1, t0, 1
+    add     t2, t1, s8                 # &pdb[idx>>1]
+    lbu     t3, 0(t2)
+    andi    t4, t0, 1
+    slli    t4, t4, 2
+    srl     t3, t3, t4
+    andi    t0, t3, 15                 # t0 = h
+
+    li      s1, 9
+    bltu    s3, t0, search_top         # r < h → prune
 
     # all views h <= r: push; identity → found, else deepen (m=0)
     sb      a1,  0(s5)                  # path[g] = m
