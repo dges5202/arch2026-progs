@@ -865,7 +865,8 @@ apply_sw_loop:
 heuristic_core:
     # child @ Q+16; keep a1=m, a5=face
     # r==0: identity → found (len=g+1); else search_top (align C)
-    # r!=0: waterfall s → σ → σ² → inv; each view PDB_NIBBLE, h>r → prune
+    # r!=0: waterfall s → inv → σ → σ²; each view PDB_NIBBLE, h>r → prune
+
     bnez    s3, r0_gate_skip
 
     li      s1, 9
@@ -951,28 +952,48 @@ loop_heuristic_core_o:
     addi    s1, s1, 1
     bne     t0, t1, loop_heuristic_core_o
 
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4                 # idx = a*729 + o
+    PDB_NIBBLE
 
-    srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
-    lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
-    srl     t3, t3, t4
-    andi    t0, t3, 15                 # t0 = h
+    # --- h(inv): reuse pos from h(s); arank from child.p[0|3|6] ---
+    addi    s1, s4, 16
+    addi    s1, s1, 7                  # &child.o[0] (no inv_p rebuild)
 
-    li      s1, 9
-    bltu    s3, t0, search_top         # r < h → prune
+
+
+
+    # a = arank[child.p[0]<<6 | p[3]<<3 | p[6]]
+    addi    t0, s4, 16
+    lbu     t1, 0(t0)                  # child.p[0]
+    lbu     t2, 3(t0)                  # child.p[3]
+    lbu     t3, 6(t0)                  # child.p[6]
+    slli    t4, t1, 6
+    slli    t5, t2, 3
+    or      t4, t4, t5
+    or      t4, t4, t3
+    add     t6, t4, s7
+    lbu     t6, 0(t6)                  # a = arank[...]
+
+    # fold inv.o[0..5]: o=(3-s.o[i])%3, i=scratch[j]
+    li      t0, 0
+    li      t1, 6
+    li      t4, 0                       # o fold = 0
+    li      t5, 3                       # for (3-x)%3
+loop_heuristic_core_inv_o:
+    add     t2, s9, t0
+    lbu     t2, 0(t2)                  # i = scratch[j] = inv.p[j]
+    add     t2, s1, t2
+    lbu     t2, 0(t2)                  # s.o[i]
+    sub     t3, t5, t2                 # 3 - s.o[i]
+    bne     t3, t5, loop_heuristic_core_inv_o_skip
+    sub     t3, t5, t3                 # if 3: → 0  ((3-0)%3)
+loop_heuristic_core_inv_o_skip:
+    slli    t2, t4, 1
+    add     t4, t4, t2                 # o*3
+    add     t4, t4, t3                 # + inv.o[j]
+    addi    t0, t0, 1
+    bne     t0, t1, loop_heuristic_core_inv_o
+
+    PDB_NIBBLE
 
 
     # --- h(σ(child)): y @ scratch[0..13]; then PDB_NIBBLE ---
@@ -1067,28 +1088,7 @@ loop_heuristic_core_sym_o_index:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_sym_o_index
 
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4                 # idx = a*729 + o
-
-    srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
-    lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
-    srl     t3, t3, t4
-    andi    t0, t3, 15                 # t0 = h
-
-    li      s1, 9
-    bltu    s3, t0, search_top         # r < h → prune
+    PDB_NIBBLE
 
 
     # --- h(σ²): z = sym3(y); in=y@S+0, out=z@S+14; PDB_NIBBLE ---
@@ -1182,98 +1182,7 @@ loop_heuristic_core_sym2_o_index:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_sym2_o_index
 
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4                 # idx = a*729 + o
-
-    srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
-    lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
-    srl     t3, t3, t4
-    andi    t0, t3, 15                 # t0 = h
-
-    li      s1, 9
-    bltu    s3, t0, search_top         # r < h → prune
-
-
-    # --- h(inv): rebuild pos (scratch was y/z); arank from child.p[0|3|6] ---
-    addi    s1, s4, 16                 # &child.p[0]; rebuild pos after σ
-
-    # build pos[]: scratch[p[i]] = i  (= inv.p)
-    li      t0, 0
-    li      t1, 7
-loop_heuristic_core_inv_p:
-    lbu     t2, 0(s1)                  # p[i]
-    add     t3, t2, s9
-    sb      t0, 0(t3)                  # scratch[p[i]] = i
-    addi    t0, t0, 1
-    addi    s1, s1, 1
-    bne     t0, t1, loop_heuristic_core_inv_p
-
-    # a = arank[child.p[0]<<6 | p[3]<<3 | p[6]]
-    addi    t0, s4, 16
-    lbu     t1, 0(t0)                  # child.p[0]
-    lbu     t2, 3(t0)                  # child.p[3]
-    lbu     t3, 6(t0)                  # child.p[6]
-    slli    t4, t1, 6
-    slli    t5, t2, 3
-    or      t4, t4, t5
-    or      t4, t4, t3
-    add     t6, t4, s7
-    lbu     t6, 0(t6)                  # a = arank[...]
-
-    # fold inv.o[0..5]: o=(3-s.o[i])%3, i=scratch[j]
-    li      t0, 0
-    li      t1, 6
-    li      t4, 0                       # o fold = 0
-    li      t5, 3                       # for (3-x)%3
-loop_heuristic_core_inv_o:
-    add     t2, s9, t0
-    lbu     t2, 0(t2)                  # i = scratch[j] = inv.p[j]
-    add     t2, s1, t2
-    lbu     t2, 0(t2)                  # s.o[i]
-    sub     t3, t5, t2                 # 3 - s.o[i]
-    bne     t3, t5, loop_heuristic_core_inv_o_skip
-    sub     t3, t5, t3                 # if 3: → 0  ((3-0)%3)
-loop_heuristic_core_inv_o_skip:
-    slli    t2, t4, 1
-    add     t4, t4, t2                 # o*3
-    add     t4, t4, t3                 # + inv.o[j]
-    addi    t0, t0, 1
-    bne     t0, t1, loop_heuristic_core_inv_o
-
-    slli    t0, t6, 9
-    slli    t1, t6, 7
-    add     t0, t0, t1
-    slli    t1, t6, 6
-    add     t0, t0, t1
-    slli    t1, t6, 4
-    add     t0, t0, t1
-    slli    t1, t6, 3
-    add     t0, t0, t1
-    add     t0, t0, t6
-    add     t0, t0, t4                 # idx = a*729 + o
-
-    srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
-    lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
-    srl     t3, t3, t4
-    andi    t0, t3, 15                 # t0 = h
-
-    li      s1, 9
-    bltu    s3, t0, search_top         # r < h → prune
+    PDB_NIBBLE
 
     # all views h <= r: push; identity → found, else deepen (m=0)
     sb      a1,  0(s5)                  # path[g] = m

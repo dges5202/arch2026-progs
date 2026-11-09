@@ -1,0 +1,7 @@
+@@d11_c_O2 N=2644 bad=0
+@@d11_c_O2 sum=4730319280 min=698463 max=9923162 p50=1646624 p90=2546822 p99=4149808
+@@d11_asm N=2644 bad=0
+@@d11_asm sum=2181073908 min=334844 max=4545966 p50=756388 p90=1182443 p99=2033447
+@@d11_cmp len_disagree=0 asm_wins=2644 c_wins=0 tie=0
+@@d11_cmp note=rv32emu_cycle_eq_instret same_order_C_then_ASM
+wall 16.46
