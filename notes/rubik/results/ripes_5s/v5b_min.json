@@ -1,0 +1,8 @@
+
+Program exited with code: 0
+{
+    "# instructions retired": 269503,
+    "CPI": 1.3440073023305863,
+    "IPC": 0.7440435764492813,
+    "cycles": 362214
+}

@@ -60,8 +60,14 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 | **v4a** | `turns==1` fast path: parent→`Q+16` one quarter | **801,022** | **2.18× faster** | *(not re-5ST’d; ≈v3)* | ≈v3 (noise); log only |
 | **v4b** | Sibling 1-quarter apply via `from_off` (always 1q) | **685,295** | **2.54× faster** | min CPI **1.359** / max **1.357** | **−14.5% vs v3** emu; big apply win |
 | | | harness ASM **131,708**; 5ST min **380,735** / max **5,121,231** | | | Log [`d11_cmp_v4b.txt`](rubik/results/d11_cmp_v4b.txt) |
+| **v5a** | Pin `a3=&sig`, walk `a4`; no per-PDB `li s1,9` | **681,242** | **2.56× faster** | min CPI **1.362** / max **1.359** | −0.59% vs v4b |
+| | | 5ST min **379,044** / max **5,099,017** | | | Log [`d11_cmp_v5a.txt`](rubik/results/d11_cmp_v5a.txt) |
+| **v5b** | σ/σ² pack-while-scatter (drop 7-scan) | **660,887** | **2.64× faster** | min CPI **1.344** / max **1.342** | **−3.0% vs v5a** |
+| | | 5ST min **362,214** / max **4,878,632** | | | Log [`d11_cmp_v5b.txt`](rubik/results/d11_cmp_v5b.txt) |
+| **v5c1** | Hot `%3` → `mod3tab` (`a7` pin) | **664,235** | **2.62× faster** | min CPI **1.312** / max **1.312** | emu **+0.51%** vs v5b; **5ST wins** |
+| | | 5ST min **355,179** / max **4,789,550**; `.text` **2788** | | | Log [`d11_cmp_v5c1.txt`](rubik/results/d11_cmp_v5c1.txt) |
 
-Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'.
+Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`).
 
 **Ripes 5ST method:** CLI `RV32_5S` on `rubik_solve_asm` only (tiny ELF), sample states from [`d11_ripes_sample_states.txt`](rubik/results/d11_ripes_sample_states.txt) (emu min/max). JSON + CSV: [`results/ripes_5s/`](rubik/results/ripes_5s/). Full 2644× not run (too slow in GUI/CLI). rv32emu still owns the **mean of 2644** KPI.
 
