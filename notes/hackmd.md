@@ -66,8 +66,10 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 | | | 5ST min **362,214** / max **4,878,632** | | | Log [`d11_cmp_v5b.txt`](rubik/results/d11_cmp_v5b.txt) |
 | **v5c1** | Hot `%3` → `mod3tab` (`a7` pin) | **664,235** | **2.62× faster** | min CPI **1.312** / max **1.312** | emu **+0.51%** vs v5b; **5ST wins** |
 | | | 5ST min **355,179** / max **4,789,550**; `.text` **2788** | | | Log [`d11_cmp_v5c1.txt`](rubik/results/d11_cmp_v5c1.txt) |
+| **v5c2** | `r==0` cold: `beqz` → `r0_id_path`; `r≠0` fall into waterfall | **664,235** | **2.62× faster** | min CPI **1.309** / max **1.308** | emu ≡ v5c1; **5ST −0.3%** |
+| | | 5ST min **354,181** / max **4,775,204** | | | Log [`d11_cmp_v5c2.txt`](rubik/results/d11_cmp_v5c2.txt) |
 
-Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`).
+Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`). v5c2 makes the common `r≠0` path fall through into the waterfall.
 
 **Ripes 5ST method:** CLI `RV32_5S` on `rubik_solve_asm` only (tiny ELF), sample states from [`d11_ripes_sample_states.txt`](rubik/results/d11_ripes_sample_states.txt) (emu min/max). JSON + CSV: [`results/ripes_5s/`](rubik/results/ripes_5s/). Full 2644× not run (too slow in GUI/CLI). rv32emu still owns the **mean of 2644** KPI.
 

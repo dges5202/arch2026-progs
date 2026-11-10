@@ -67,6 +67,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v5a** | Pin `a3=&sig`, walk `a4`; drop per-view `li s1,9` | **681,242** | −0.59% vs v4b |
 | **v5b** | σ/σ² pack-while-scatter; drop 7-scan index | **660,887** | **−3.0% vs v5a**; 2.64× vs C |
 | **v5c1** | Hot `%3` → `mod3tab` (`a7` pin) | **664,235** | emu **+0.51%** vs v5b; 5ST wins |
+| **v5c2** | `r≠0` fall into waterfall; `r0_id` cold | **664,235** | emu ≡ v5c1; 5ST **−0.3%** |
 
 ## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
 
@@ -90,10 +91,12 @@ v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
 | **v5a** | max | 5,099,017 | 3,752,843 | 1.359 | 0.736 |
 | **v5b** | min | 362,214 | 269,503 | 1.344 | 0.744 |
 | **v5b** | max | 4,878,632 | 3,636,640 | 1.342 | 0.745 |
-| **v5c1** | min | **355,179** | 270,619 | **1.312** | 0.762 |
-| **v5c1** | max | **4,789,550** | 3,651,025 | **1.312** | 0.762 |
+| **v5c1** | min | 355,179 | 270,619 | 1.312 | 0.762 |
+| **v5c1** | max | 4,789,550 | 3,651,025 | 1.312 | 0.762 |
+| **v5c2** | min | **354,181** | 270,619 | **1.309** | 0.764 |
+| **v5c2** | max | **4,775,204** | 3,651,025 | **1.308** | 0.765 |
 
-Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1 mod3tab** trades a bit of emu instret for lower 5ST CPI/cycles. Judge CPI steps on Ripes.
+Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1 mod3tab** trades emu instret for lower 5ST CPI; **v5c2** keeps emu flat and shaves ~0.3% 5ST cycles via `r0` polarity. Judge CPI steps on Ripes.
 
 ## Semantics reminder
 
@@ -104,6 +107,7 @@ Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1 mod3tab** trad
 - **v5a**: `a3=&sig` pinned; heuristic walk = `a4`; `s1` stays MOVES.
 - **v5b**: while scattering `y.p`/`z.p`, fold cubie 0|3|6 dest into `a2` pack; `mv t6,a2` → arank (no 7-scan).
 - **v5c1**: pin `a7=&mod3tab`; apply/inv/σ·σ² ori use `lbu` instead of `%3` branch loops.
+- **v5c2**: `beqz s3, r0_id_path`; common `r≠0` falls into waterfall (identity check is cold).
 
 ## GCC disasm tips / why C loses (checklist)
 

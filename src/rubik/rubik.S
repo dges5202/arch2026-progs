@@ -827,23 +827,7 @@ heuristic_core:
     # r==0: identity → found (len=g+1); else search_top (align C)
     # r!=0: waterfall s → inv → σ → σ²; each view PDB_NIBBLE, h>r → prune
 
-    bnez    s3, r0_gate_skip
-
-    addi    t6, s4, 16                 # &child
-    li      t0, 0
-    li      t1, 7
-r0_id:
-    lbu     t2, 0(t6)                  # p[i]
-    bne     t0, t2, search_top         # unsolved, r==0 → prune
-    lbu     t2, 7(t6)                  # o[i]
-    bnez    t2, search_top
-    addi    t0, t0, 1
-    addi    t6, t6, 1
-    bne     t0, t1, r0_id
-
-    sb      a1, 0(s5)                  # path[g] = m
-    addi    s2, s2, 1                  # length = g+1 for found
-    j       found
+    beqz    s3, r0_id_path
 
 r0_gate_skip:
     # PDB_NIBBLE: t6=a, t4=o → t0=h; if h>r → search_top
@@ -1218,6 +1202,24 @@ found_index_done:
     sb      x0, 0(t4)                   # NUL
     mv      a0, s2
     j       epilogue
+
+r0_id_path:
+
+    addi    t6, s4, 16                 # &child
+    li      t0, 0
+    li      t1, 7
+r0_id:
+    lbu     t2, 0(t6)                  # p[i]
+    bne     t0, t2, search_top         # unsolved, r==0 → prune
+    lbu     t2, 7(t6)                  # o[i]
+    bnez    t2, search_top
+    addi    t0, t0, 1
+    addi    t6, t6, 1
+    bne     t0, t1, r0_id
+
+    sb      a1, 0(s5)                  # path[g] = m
+    addi    s2, s2, 1                  # length = g+1 for found
+    j       found
 
 found_cap_fail:
     beqz    s11, found_cap_fail_skip1    # cap == 0: don't write NUL
