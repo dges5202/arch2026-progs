@@ -786,26 +786,29 @@ no_prev:
 apply_1q_skip:
     li      t0, 7
 
+    # apply_1q LU: dest (&t3) fills from→use; &twist (t2) fills p→sb;
+    # twist lbu fills o→add. mod3→sb / twist→add may still stall 1.
 apply_1q:
     addi    t0, t0, -1
     add     t1, t4, t0
     lbu     t1, 0(t1)          # from = source[face][i]
 
+    add     t3, a0, t0         # &dest.p[i] (fill from)
     add     t6, a6, t1
-    lbu     t6, 0(t6)          # sb to dest.p[i]
-    add     t3, a0, t0
+    lbu     t6, 0(t6)          # p
+
+    add     t2, t5, t0         # &twist[face][i] (fill p→sb)
     sb      t6, 0(t3)
 
     add     t6, a6, t1
     lbu     t6, 7(t6)          # o
-    add     t1, t5, t0
-    lbu     t1, 0(t1)          # twist[face][i]
+    lbu     t1, 0(t2)          # twist[face][i] (fill o)
     add     t6, t6, t1         # o + twist
 
     add     t6, a7, t6         # &mod3tab[o + twist]
     lbu     t6, 0(t6)          # mod3tab[o + twist]
 
-    sb      t6, 7(t3)
+    sb      t6, 7(t3)          # may load-use stall 1
     bnez    t0, apply_1q
 
 
