@@ -68,6 +68,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v5b** | σ/σ² pack-while-scatter; drop 7-scan index | **660,887** | **−3.0% vs v5a**; 2.64× vs C |
 | **v5c1** | Hot `%3` → `mod3tab` (`a7` pin) | **664,235** | emu **+0.51%** vs v5b; 5ST wins |
 | **v5c2** | `r≠0` fall into waterfall; `r0_id` cold | **664,235** | emu ≡ v5c1; 5ST **−0.3%** |
+| **v5c3** | PDB nibble `slli; andi 4` (hot macro + root) | **664,235** | **≡ v5c2** (wash) |
 
 ## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
 
@@ -93,10 +94,12 @@ v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
 | **v5b** | max | 4,878,632 | 3,636,640 | 1.342 | 0.745 |
 | **v5c1** | min | 355,179 | 270,619 | 1.312 | 0.762 |
 | **v5c1** | max | 4,789,550 | 3,651,025 | 1.312 | 0.762 |
-| **v5c2** | min | **354,181** | 270,619 | **1.309** | 0.764 |
-| **v5c2** | max | **4,775,204** | 3,651,025 | **1.308** | 0.765 |
+| **v5c2** | min | 354,181 | 270,619 | 1.309 | 0.764 |
+| **v5c2** | max | 4,775,204 | 3,651,025 | 1.308 | 0.765 |
+| **v5c3** | min | **354,181** | 270,619 | **1.309** | 0.764 |
+| **v5c3** | max | **4,775,204** | 3,651,025 | **1.308** | 0.765 |
 
-Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1 mod3tab** trades emu instret for lower 5ST CPI; **v5c2** keeps emu flat and shaves ~0.3% 5ST cycles via `r0` polarity. Judge CPI steps on Ripes.
+Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1 mod3tab** trades emu instret for lower 5ST CPI; **v5c2** shaves ~0.3% 5ST via `r0` polarity; **v5c3** nibble form is ≡ (next LU fills go in apply / fold). Judge CPI steps on Ripes.
 
 ## Semantics reminder
 
@@ -108,6 +111,7 @@ Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1 mod3tab** trad
 - **v5b**: while scattering `y.p`/`z.p`, fold cubie 0|3|6 dest into `a2` pack; `mv t6,a2` → arank (no 7-scan).
 - **v5c1**: pin `a7=&mod3tab`; apply/inv/σ·σ² ori use `lbu` instead of `%3` branch loops.
 - **v5c2**: `beqz s3, r0_id_path`; common `r≠0` falls into waterfall (identity check is cold).
+- **v5c3**: nibble extract `slli t4,idx,2; andi t4,t4,4` in `PDB_NIBBLE` and root heuristic (≡ old `andi 1; slli 2`).
 
 ## GCC disasm tips / why C loses (checklist)
 
@@ -115,7 +119,7 @@ Disasm: `objdump -d -M no-aliases build/rubik/O2/impl.o` (helpers `h_pos3ori`, `
 
 | Tip | Note |
 |-----|------|
-| Nibble shift | GCC: `slli x,idx,2; andi x,x,4` ≡ `(idx&1)<<2` in one fewer insn than `andi 1; slli 2`. Noted on `PDB_NIBBLE`; not applied yet. |
+| Nibble shift | GCC: `slli x,idx,2; andi x,x,4` ≡ `(idx&1)<<2` (same 2 insns as `andi 1; slli 2`). Applied in **v5c3**; emu/5ST ≡. |
 | `%3` | GCC uses `bgeu`/`addi -3`/`bltu` subtract loop — **no table**. `mod3tab` is our v5.4 idea for 5ST CPI, not copied from GCC. |
 | Calls | `-O2`: `h_pos3ori` / `sym3` stay separate (`jalr`). `-O3`: both **inlined into `heuristic`**; `.text` 2108 → 3412. |
 | Search | C `search()` is already an **explicit loop** (not recursion). Cost is still stack frame + spills around `heuristic` / helpers, and **no waterfall** (every child pays all four views). |

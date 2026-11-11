@@ -319,8 +319,8 @@ loop_heuristic_o:
     srli    t1, t0, 1
     add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
+    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    andi    t4, t4, 4
     srl     t3, t3, t4
     andi    s0, t3, 15                 # s0 = h(s)
 
@@ -375,8 +375,8 @@ loop_heuristic_inv_o_skip:
     srli    t1, t0, 1
     add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
+    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    andi    t4, t4, 4
     srl     t3, t3, t4
     andi    t0, t3, 15
     blt     t0, s0, heuristic_skip1
@@ -496,8 +496,8 @@ loop_heuristic_sym_o_index:
     srli    t1, t0, 1
     add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
+    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    andi    t4, t4, 4
     srl     t3, t3, t4
     andi    t0, t3, 15
     blt     t0, s0, heuristic_skip2
@@ -617,8 +617,8 @@ loop_heuristic_sym2_o_index:
     srli    t1, t0, 1
     add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
+    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    andi    t4, t4, 4
     srl     t3, t3, t4
     andi    t0, t3, 15
     blt     t0, s0, heuristic_skip3
@@ -829,12 +829,10 @@ heuristic_core:
 
     beqz    s3, r0_id_path
 
-r0_gate_skip:
     # PDB_NIBBLE: t6=a, t4=o → t0=h; if h>r → search_top
     # clobbers t1-t3, t4 (parity scratch). s1 stays MOVES (no reload).
-    # GCC -O2 h_pos3ori nibble tip (not applied yet): instead of
-    #   andi t4,t0,1 ; slli t4,t4,2
-    # use  slli t4,t0,2 ; andi t4,t4,4  (one fewer insn; same 0|4 shift).
+    # Nibble shift (GCC tip): slli 2; andi 4 ≡ (idx&1)<<2, one fewer than
+    # andi 1; slli 2. lbu→srl keeps a 2-insn gap for the load-use slot.
     .macro  PDB_NIBBLE
     slli    t0, t6, 10
     add     t0, t0, t4                 # idx = a*1024 + o
@@ -842,11 +840,10 @@ r0_gate_skip:
     srli    t1, t0, 1
     add     t2, t1, s8                 # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    andi    t4, t0, 1
-    slli    t4, t4, 2
+    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    andi    t4, t4, 4
     srl     t3, t3, t4
     andi    t0, t3, 15                 # t0 = h
-
 
     bltu    s3, t0, search_top         # r < h → prune
     .endm
