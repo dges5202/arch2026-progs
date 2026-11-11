@@ -855,14 +855,15 @@ heuristic_core:
     addi    a4, s4, 16                 # a4 = &child.p[0]
 
     # build pos[]: scratch[p[i]] = i
+    # LU: bump a4 between lbu p and add (fills load-use; still ends at &o[0])
     li      t0, 0
     li      t1, 7
 loop_heuristic_core_p:
     lbu     t2, 0(a4)                  # p[i]
+    addi    a4, a4, 1                  # fill p→use
     add     t3, t2, s9
     sb      t0, 0(t3)                  # scratch[p[i]] = i
     addi    t0, t0, 1
-    addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_p
 
     # a = arank[pos0<<6 | pos3<<3 | pos6]; a4 now at &child.o[0]

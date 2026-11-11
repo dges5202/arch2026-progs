@@ -70,6 +70,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v5c2** | `r≠0` fall into waterfall; `r0_id` cold | **664,235** | emu ≡ v5c1; 5ST **−0.3%** |
 | **v5c3** | PDB nibble `slli; andi 4` (hot macro + root) | **664,235** | **≡ v5c2** (wash) |
 | **v5c4** | `apply_1q` LU schedule (dest / `&twist` fills) | **664,235** | emu ≡; 5ST **−1.0%** |
+| **v5c5** | pos-build: bump `a4` between `lbu p` and use | **664,235** | emu ≡; 5ST **−1.0%** vs v5c4 |
 
 ## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
 
@@ -99,10 +100,12 @@ v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
 | **v5c2** | max | 4,775,204 | 3,651,025 | 1.308 | 0.765 |
 | **v5c3** | min | 354,181 | 270,619 | 1.309 | 0.764 |
 | **v5c3** | max | 4,775,204 | 3,651,025 | 1.308 | 0.765 |
-| **v5c4** | min | **350,618** | 270,619 | **1.296** | 0.772 |
-| **v5c4** | max | **4,724,909** | 3,651,025 | **1.294** | 0.773 |
+| **v5c4** | min | 350,618 | 270,619 | 1.296 | 0.772 |
+| **v5c4** | max | 4,724,909 | 3,651,025 | 1.294 | 0.773 |
+| **v5c5** | min | **347,090** | 270,619 | **1.283** | 0.780 |
+| **v5c5** | max | **4,674,656** | 3,651,025 | **1.280** | 0.781 |
 
-Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1 mod3tab** trades emu for 5ST CPI; **v5c2** `r0` polarity; **v5c3** nibble ≡; **v5c4** apply LU fills cut ~1% 5ST cycles at flat emu. Judge CPI steps on Ripes.
+Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu. Remaining o/inv/σ folds already had gaps — stop LU here. Judge CPI on Ripes.
 
 ## Semantics reminder
 
@@ -116,6 +119,7 @@ Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1 mod3tab** trad
 - **v5c2**: `beqz s3, r0_id_path`; common `r≠0` falls into waterfall (identity check is cold).
 - **v5c3**: nibble extract `slli t4,idx,2; andi t4,t4,4` in `PDB_NIBBLE` and root heuristic (≡ old `andi 1; slli 2`).
 - **v5c4**: `apply_1q` — `add dest` fills from→use; `add &twist` fills p→sb; twist `lbu` fills o→add.
+- **v5c5**: `loop_heuristic_core_p` — `addi a4` between `lbu p` and `add` (LU fill).
 
 ## GCC disasm tips / why C loses (checklist)
 
