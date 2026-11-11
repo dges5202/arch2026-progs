@@ -94,12 +94,39 @@
 #  Hot %3 (apply / inv / σ·σ² ori): lbu from mod3tab — no blt/sub loop.
 #  .data below is HW2; rubik_arank|rubik_pdb from tables.S (link).
 #
+# -------
+#  OPT LOG (hackmd §1.5) — where each row lives in this file
+# -------
+#  v1    IDA* + waterfall s→inv→σ→σ²; C-style apply; parse sll
+#        → steps 1–5; heuristic_core waterfall; child apply (later v4b)
+#  v2/v2b order matter: KEEP s→inv→σ→σ² (v2 σ-first regressed; v2b restore)
+#        → root heuristic_start + hot heuristic_core same order
+#  v3    PDB stride 1024; idx=(a<<10)+o
+#        → every PDB_NIBBLE / root nibble: slli t0,t6,10
+#  v4a   turns==1 fast path (superseded)
+#  v4b   sibling 1q via from_off (always one quarter)
+#        → no_prev / apply_1q / apply_sw_loop
+#  v5a   pin a3=&sig, walk a4; s1=MOVES whole search (no per-PDB li s1,9)
+#        → ida_start la a3; heuristic_core uses a4; PDB_NIBBLE keeps s1
+#  v5b   σ/σ² pack-while-scatter (drop 7-scan index)
+#        → loop_heuristic_core_sym*_p_build packs a2; mv t6,a2 → arank
+#  v5c1  hot %3 → mod3tab, a7 pin
+#        → ida_start la a7; apply_1q / inv_o / sym_o use lbu (a7)
+#  v5c2  r==0 cold: beqz → r0_id_path; r≠0 falls into waterfall
+#        → heuristic_core: beqz s3, r0_id_path
+#  v5c3  nibble slli; andi 4 (≡ andi 1; slli 2)
+#        → PDB_NIBBLE + root nibble sites
+#  v5c4  apply_1q LU: dest / &twist fills between loads and uses
+#        → apply_1q body
+#  v5c5  pos-build LU: addi a4 between lbu p and add
+#        → loop_heuristic_core_p
+#
 
     .data
     # Order: states → scratch → P → F → source/twist/sig/kk/mod3tab → move_names
 
-    states: .zero 192                   # 12*16; Q=&states[g]; p@0..6 o@7..13
-    scratch:.zero 32                    # inv; σ: y@0..13; σ²: z@14..27
+    states: .zero 192                              # 12*16; Q=&states[g]; p@0..6 o@7..13
+    scratch:.zero 32                               # inv; σ: y@0..13; σ²: z@14..27
 
     # P-cluster: next=P+11, pface=P+23
     path:   .zero 11
@@ -165,45 +192,45 @@ rubik_solve_asm:
     #    (b) i=0..6: p=in[i]-'1' ∈0..6 unique (seen); o=in[7+i]-'1' ∈0..2;
     #        sum += o; store p→states[i], o→states[7+i]
     #    (c) sum % 3 == 0 (subtract 3 until <3, must be 0)
-    mv      t4, a0                       # length cursor (keep a0 at in[0])
+    mv      t4, a0                                 # length cursor (keep a0 at in[0])
 
     li      t0, 0
     li      t1, 14
 loop_parse:
     lbu     t3, 0(t4)
-    beqz    t3, loop_parse_failed       # too short
+    beqz    t3, loop_parse_failed                  # too short
 
     addi    t0, t0, 1
     addi    t4, t4, 1
     bne     t0, t1, loop_parse
 
     lbu     t3, 0(t4)
-    bnez    t3, loop_parse_failed       # in[14] must be NUL
+    bnez    t3, loop_parse_failed                  # in[14] must be NUL
 
     la      s1, states
-    li      t0, 7                       # 7 cubies
-    li      t1, 7                       # p reject if >= 7
-    li      a4, 3                       # o reject if >= 3; mod3 step
-    li      a5, 0                       # seen bitmask
-    li      a6, 0                       # ori sum
+    li      t0, 7                                  # 7 cubies
+    li      t1, 7                                  # p reject if >= 7
+    li      a4, 3                                  # o reject if >= 3; mod3 step
+    li      a5, 0                                  # seen bitmask
+    li      a6, 0                                  # ori sum
 
 loop_build:
-    lbu     t2, 0(a0)                   # in[i]
-    lbu     t3, 7(a0)                   # in[7+i]
-    addi    t4, t2, -49                 # t4 = p = in[i] - '1'
-    addi    t5, t3, -49                 # t5 = o = in[7+i] - '1'
-    bgeu    t4, t1, loop_parse_failed   # p not in 0..6
+    lbu     t2, 0(a0)                              # in[i]
+    lbu     t3, 7(a0)                              # in[7+i]
+    addi    t4, t2, -49                            # t4 = p = in[i] - '1'
+    addi    t5, t3, -49                            # t5 = o = in[7+i] - '1'
+    bgeu    t4, t1, loop_parse_failed              # p not in 0..6
     li      t6, 1
-    sll     t6, t6, t4                  # 1 << p
+    sll     t6, t6, t4                             # 1 << p
     and     a3, a5, t6
-    bnez    a3, loop_parse_failed       # duplicate cubie
-    or      a5, a5, t6                  # seen |= 1<<p
+    bnez    a3, loop_parse_failed                  # duplicate cubie
+    or      a5, a5, t6                             # seen |= 1<<p
 
-    bgeu    t5, a4, loop_parse_failed   # o not in 0..2
-    add     a6, a6, t5                  # sum += o
+    bgeu    t5, a4, loop_parse_failed              # o not in 0..2
+    add     a6, a6, t5                             # sum += o
 
-    sb      t4,  0(s1)                  # states.p[i]
-    sb      t5,  7(s1)                  # states.o[i]
+    sb      t4,  0(s1)                             # states.p[i]
+    sb      t5,  7(s1)                             # states.o[i]
 
     addi    t0, t0, -1
     addi    a0, a0, 1
@@ -211,171 +238,157 @@ loop_build:
     bnez    t0, loop_build
 
 parse_mod3:
-    bltu    a6, a4, parse_mod3_skip     # while sum >= 3: sum -= 3
+    bltu    a6, a4, parse_mod3_skip                # while sum >= 3: sum -= 3
     sub     a6, a6, a4
     j       parse_mod3
 
 parse_mod3_skip:
-    bnez    a6, loop_parse_failed       # need sum ≡ 0 (mod 3)
+    bnez    a6, loop_parse_failed                  # need sum ≡ 0 (mod 3)
 
 
     # 2. already solved? identity on states[0] (NOT h==0 — pos3ori can
     #    be 0 on unsolved). Else → heuristic_start.
     #    p[i]==i (i=0..6), o[i]==0 (i=0..6)
     #    yes → out="" (cap>=1), return 0;  cap==0 → return -2
-    la      s1, states                  # s1 = &states[0].p[0]
+    la      s1, states                             # s1 = &states[0].p[0]
 
     li      t0, 0
     li      t1, 7
 decision_loop: 
-    lbu     t2, 0(s1)                   # t2 = p[i]
+    lbu     t2, 0(s1)                              # t2 = p[i]
     bne     t0, t2, heuristic_start
-    lbu     t2, 7(s1)                   # t2 = o[i]
+    lbu     t2, 7(s1)                              # t2 = o[i]
     bnez    t2, heuristic_start
 
     addi    t0, t0, 1
     addi    s1, s1, 1
     bne     t0, t1, decision_loop
 
-    beqz    s11, exit_program           # cap == 0 → -2
-    sb      x0, 0(s10)                  # out[0] = '\0'
+    beqz    s11, exit_program                      # cap == 0 → -2
+    sb      x0, 0(s10)                             # out[0] = '\0'
     li      a0, 0
     j       epilogue
 
 loop_parse_failed:
-    li      a0, -1                      # invalid state
+    li      a0, -1                                 # invalid state
     j       epilogue
 
 exit_program:
-    li      a0, -2                      # cap too small for empty solution
+    li      a0, -2                                 # cap too small for empty solution
     j       epilogue
 
 heuristic_start:
-    # -------
-    # 3. Root heuristic → s0 = bound seed (no waterfall vs r here)
-    #
-    # Matches rubik.c heuristic():
-    #   h = max( h_pos3ori(s), h(inv), h(σ(s)), h(σ²(s)) )
-    # Verified vs C on 7k+ states (inv shortcut + sym3 %3 path): OK.
-    #
-    # pdb_index: a=arank[pos0<<6|pos3<<3|pos6]; o=fold o[0..5];
-    #            idx=(a<<10)+o; nibble from rubik_pdb (stride 1024).
-    # Scratch: after h(s), [0..6]=pos=inv.p; σ: y@0..13; σ²: z@14..27.
-    # s7=A, s8=D, s9=S live through all four views.
-    # PDB packed with stride 1024; guest idx=(a<<10)+o.
-    # -------
+    # 3. Root heuristic → s0 = bound seed (no prune vs r; full max of 4 views)
+    #    Matches rubik.c heuristic() / IDA* initial bound (v1 / v2b order):
+    #      h = max( h_pos3ori(s), h(inv), h(σ(s)), h(σ²(s)) )
+    #    (a) pdb_index: a=arank[pos0<<6|pos3<<3|pos6]; o=fold o[0..5]
+    #    (b) v3: idx=(a<<10)+o; nibble from rubik_pdb (stride 1024)
+    #    (c) scratch: after h(s), [0..6]=pos=inv.p; σ y@0..13; σ² z@14..27
+    #    (d) s7=A, s8=D, s9=S live through all four views
+    #    Note: root σ still uses subtract-%3 + 7-scan index; hot path is v5b/c1.
 
-    # ---------------------------------------------------------------------
-    # h_pos3ori(s)  —  index states[0] directly, seed s0 = h
-    #
-    # C:  h = pdb_get(pdb_index(s));
-    #     /* pos[p[i]]=i; a=arank[pos[0]<<6|pos[3]<<3|pos[6]];
-    #        o=fold s.o[0..5]; return nibble((a<<10)+o) */
-    # ---------------------------------------------------------------------
-    la      s1, states                  # cursor at s.p[0]
-    la      s7, rubik_arank             # s7 = A = &rubik_arank[0]
-    la      s8, rubik_pdb               # s8 = D = &rubik_pdb[0]
-    la      s9, scratch                 # s9 = S = &scratch[0]
+    # 3a. h_pos3ori(s) — index states[0] directly, seed s0 = h
+    #     C: pos[p[i]]=i; a=arank[...]; o=fold s.o[0..5]; nibble((a<<10)+o)
+    la      s1, states                             # cursor at s.p[0]
+    la      s7, rubik_arank                        # s7 = A = &rubik_arank[0]
+    la      s8, rubik_pdb                          # s8 = D = &rubik_pdb[0]
+    la      s9, scratch                            # s9 = S = &scratch[0]
 
     # build pos[]: scratch[p[i]] = i
     li      t0, 0
     li      t1, 7
 loop_heuristic_p:
-    lbu     t2, 0(s1)                  # p[i]
+    lbu     t2, 0(s1)                              # p[i]
     add     t3, t2, s9
-    sb      t0, 0(t3)                  # scratch[p[i]] = i
+    sb      t0, 0(t3)                              # scratch[p[i]] = i
     addi    t0, t0, 1
     addi    s1, s1, 1
     bne     t0, t1, loop_heuristic_p
 
     # a = arank[pos0<<6 | pos3<<3 | pos6]; s1 now at &s.o[0]
-    lbu     t0, 0(s9)                  # pos0 = scratch[0]
-    lbu     t1, 3(s9)                  # pos3 = scratch[3]
-    lbu     t2, 6(s9)                  # pos6 = scratch[6]
-    slli    t3, t0, 6                  # pos0 << 6
-    slli    t4, t1, 3                  # pos3 << 3
+    lbu     t0, 0(s9)                              # pos0 = scratch[0]
+    lbu     t1, 3(s9)                              # pos3 = scratch[3]
+    lbu     t2, 6(s9)                              # pos6 = scratch[6]
+    slli    t3, t0, 6                              # pos0 << 6
+    slli    t4, t1, 3                              # pos3 << 3
     or      t5, t3, t4
-    or      t5, t5, t2                 # pack
+    or      t5, t5, t2                             # pack
     add     t6, t5, s7
-    lbu     t6, 0(t6)                  # a = arank[...]
+    lbu     t6, 0(t6)                              # a = arank[...]
 
     # fold s.o[0..5] → t4
     li      t0, 0
     li      t1, 6
-    li      t4, 0                       # o = 0
+    li      t4, 0                                  # o = 0
 loop_heuristic_o:
-    lbu     t2, 0(s1)                  # o[i]
-    slli    t3, t4, 1                  # o*2
-    add     t4, t4, t3                 # o*3
-    add     t4, t4, t2                 # o*3 + o[i]
+    lbu     t2, 0(s1)                              # o[i]
+    slli    t3, t4, 1                              # o*2
+    add     t4, t4, t3                             # o*3
+    add     t4, t4, t2                             # o*3 + o[i]
     addi    t0, t0, 1
     addi    s1, s1, 1
     bne     t0, t1, loop_heuristic_o
 
-    # idx = a*1024 + o; pdb nibble → s0 (first h, no max yet)
+    # v3+v5c3 nibble: idx=(a<<10)+o; (idx&1)<<2 via slli;andi 4
     slli    t0, t6, 10
-    add     t0, t0, t4                 # idx = a*1024 + o
+    add     t0, t0, t4                             # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
+    add     t2, t1, s8                             # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    slli    t4, t0, 2                              # (idx&1)<<2
     andi    t4, t4, 4
     srl     t3, t3, t4
-    andi    s0, t3, 15                 # s0 = h(s)
+    andi    s0, t3, 15                             # s0 = h(s)
 
-    # ---------------------------------------------------------------------
-    # h_pos3ori(inv(s))  —  max into s0
-    #
-    # C invert: r.p[c]=i, r.o[c]=mod3(3-s.o[i]) with c=s.p[i].
-    # Shortcut (≡ full invert+index; checked vs C):
-    #   pos_inv[0|3|6] = s.p[0|3|6]  →  arank[s.p[0]<<6|s.p[3]<<3|s.p[6]]
-    #   scratch[j] from h(s) = inv.p[j]; inv.o[j]=mod3(3-s.o[scratch[j]])
-    #   fold inv.o[0..5] only (same as rank_ori_state).
-    # ---------------------------------------------------------------------
+    # 3b. h_pos3ori(inv(s)) — max into s0 (v2b: inv before σ; reuse pos)
+    #     C invert: r.p[c]=i, r.o[c]=mod3(3-s.o[i]), c=s.p[i]
+    #     (a) arank from s.p[0|3|6]
+    #     (b) scratch[j] from h(s) = inv.p[j]
+    #     (c) fold inv.o[j]=mod3(3-s.o[scratch[j]]), j=0..5
     la      s1, states
-    addi    s1, s1, 7                  # &s.o[0] (inv_p rebuild removed)
+    addi    s1, s1, 7                              # &s.o[0] (inv_p rebuild removed)
 
     # a = arank[s.p[0]<<6 | s.p[3]<<3 | s.p[6]]
     la      t0, states
-    lbu     t1, 0(t0)                  # s.p[0] = pos of cubie 0 in inv
-    lbu     t2, 3(t0)                  # s.p[3]
-    lbu     t3, 6(t0)                  # s.p[6]
+    lbu     t1, 0(t0)                              # s.p[0] = pos of cubie 0 in inv
+    lbu     t2, 3(t0)                              # s.p[3]
+    lbu     t3, 6(t0)                              # s.p[6]
     slli    t4, t1, 6
     slli    t5, t2, 3
     or      t4, t4, t5
     or      t4, t4, t3
     add     t6, t4, s7
-    lbu     t6, 0(t6)                  # a = arank[...]
+    lbu     t6, 0(t6)                              # a = arank[...]
 
     # fold inv.o[0..5]: o=(3-s.o[i])%3, i=scratch[j]
     li      t0, 0
     li      t1, 6
-    li      t4, 0                       # o fold = 0
-    li      t5, 3                       # for (3-x)%3
+    li      t4, 0                                  # o fold = 0
+    li      t5, 3                                  # for (3-x)%3
 loop_heuristic_inv_o:
     add     t2, s9, t0
-    lbu     t2, 0(t2)                  # i = scratch[j] = inv.p[j]
+    lbu     t2, 0(t2)                              # i = scratch[j] = inv.p[j]
     add     t2, s1, t2
-    lbu     t2, 0(t2)                  # s.o[i]
-    sub     t3, t5, t2                 # 3 - s.o[i]
+    lbu     t2, 0(t2)                              # s.o[i]
+    sub     t3, t5, t2                             # 3 - s.o[i]
     bne     t3, t5, loop_heuristic_inv_o_skip
-    sub     t3, t5, t3                 # if 3: → 0  ((3-0)%3)
+    sub     t3, t5, t3                             # if 3: → 0  ((3-0)%3)
 loop_heuristic_inv_o_skip:
     slli    t2, t4, 1
-    add     t4, t4, t2                 # o*3
-    add     t4, t4, t3                 # + inv.o[j]
+    add     t4, t4, t2                             # o*3
+    add     t4, t4, t3                             # + inv.o[j]
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_inv_o
 
-    # idx = a*1024 + o; pdb nibble → s0 (first h, no max yet)
+    # v3+v5c3 nibble → max into s0
     slli    t0, t6, 10
-    add     t0, t0, t4                 # idx = a*1024 + o
+    add     t0, t0, t4                             # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
+    add     t2, t1, s8                             # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    slli    t4, t0, 2                              # (idx&1)<<2
     andi    t4, t4, 4
     srl     t3, t3, t4
     andi    t0, t3, 15
@@ -385,35 +398,28 @@ loop_heuristic_inv_o_skip:
 
 heuristic_skip1:
 
-    # ---------------------------------------------------------------------
-    # h_pos3ori(σ(s))  —  y = sym3(s), pdb_index(y), max into s0
-    #
-    # C:  state_t y = sym3(s);
-    #     h = max(h, h_pos3ori(&y));
-    #     /* y.p[sig[i]] = sig[p[i]];
-    #        y.o[sig[i]] = (o[i]+3+kk[i]-kk[p[i]])%3 */
-    #
-    # Bases: s7=A, s8=D, s9=S live. Reload: s1=&states, t5=&sig (kk at t5+7).
-    # Index packing clobbers t5 — σ² must la t5,sig again.
-    # After this block scratch: [0..6]=y.p [7..13]=y.o | [14..27] for z.
-    # ---------------------------------------------------------------------
-    la      s1, states                  # cursor at s.p[0]
-    la      t5, sig                     # &sig[0]; kk at t5+7
+    # 3c. h_pos3ori(σ(s)) — y=sym3(s), pdb_index(y), max into s0
+    #     C: y.p[sig[i]]=sig[p[i]]; y.o[sig[i]]=(o+3+kk[i]-kk[p[i]])%3
+    #     (a) s1=&states; t5=&sig (kk at t5+7); s7/s8/s9 live
+    #     (b) root: subtract-%3 + 7-scan index (hot path = v5b/v5c1)
+    #     (c) index pack clobbers t5 → σ² must la t5,sig again
+    la      s1, states                             # cursor at s.p[0]
+    la      t5, sig                                # &sig[0]; kk at t5+7
 
     # build y.p[sig[i]] = sig[p[i]]
     li      t0, 0
     li      t1, 7
 
 loop_heuristic_sym_p_build:
-    lbu     t2, 0(s1)                  # p[i]
+    lbu     t2, 0(s1)                              # p[i]
     add     t3, t2, t5
-    lbu     t3, 0(t3)                  # sig[p[i]]
+    lbu     t3, 0(t3)                              # sig[p[i]]
 
     add     t2, t0, t5
-    lbu     t2, 0(t2)                  # sig[i]
+    lbu     t2, 0(t2)                              # sig[i]
 
     add     t2, t2, s9
-    sb      t3, 0(t2)                  # y.p[sig[i]]
+    sb      t3, 0(t2)                              # y.p[sig[i]]
     
 
     addi    t0, t0, 1
@@ -423,28 +429,28 @@ loop_heuristic_sym_p_build:
     # build y.o[sig[i]] = (o[i]+3+kk[i]-kk[p[i]]) % 3; s1 at &s.o[0]
     li      t0, 0
     li      t1, 7
-    li      t6, 3                       # %3 threshold
+    li      t6, 3                                  # %3 threshold
 loop_heuristic_sym_o_build:
-    lbu     t2, 0(s1)                  # o[i]
+    lbu     t2, 0(s1)                              # o[i]
     addi    t3, t2, 3
     add     t2, t5, t0
-    lbu     t2, 7(t2)                  # kk[i]
-    add     t4, t2, t3                 # o[i]+3+kk[i]
-    lbu     t2, -7(s1)                 # p[i]
+    lbu     t2, 7(t2)                              # kk[i]
+    add     t4, t2, t3                             # o[i]+3+kk[i]
+    lbu     t2, -7(s1)                             # p[i]
     add     t3, t2, t5
-    lbu     t3, 7(t3)                  # kk[p[i]]
-    sub     t4, t4, t3                 # o[i]+3+kk[i]-kk[p[i]]
+    lbu     t3, 7(t3)                              # kk[p[i]]
+    sub     t4, t4, t3                             # o[i]+3+kk[i]-kk[p[i]]
 
     blt     t4, t6, loop_heuristic_sym_o_skip
     sub     t4, t4, t6
     blt     t4, t6, loop_heuristic_sym_o_skip
-    sub     t4, t4, t6                 # %3 (t4 was in 2..6)
+    sub     t4, t4, t6                             # %3 (t4 was in 2..6)
 
 loop_heuristic_sym_o_skip:
     add     t2, t0, t5
-    lbu     t3, 0(t2)                  # sig[i]
+    lbu     t3, 0(t2)                              # sig[i]
     add     t2, t3, s9
-    sb      t4, 7(t2)                  # y.o[sig[i]]
+    sb      t4, 7(t2)                              # y.o[sig[i]]
 
     addi    t0, t0, 1
     addi    s1, s1, 1
@@ -453,28 +459,28 @@ loop_heuristic_sym_o_skip:
     # pdb_index(y): pack pos of cubies 0,3,6 from y.p into t6, then arank
     li      t0, 0
     li      t1, 7
-    li      t3, 3                       # cubie 3
-    li      t4, 6                       # cubie 6
+    li      t3, 3                                  # cubie 3
+    li      t4, 6                                  # cubie 6
     li      t6, 0
 loop_heuristic_sym_p_index:
     add     t2, t0, s9
-    lbu     t2, 0(t2)                  # y.p[i]
+    lbu     t2, 0(t2)                              # y.p[i]
     bne     t2, x0, loop_heuristic_sym_p_index_skip1
-    slli    t5, t0, 6                  # clobbers &sig
-    or      t6, t5, t6                 # | pos0<<6
+    slli    t5, t0, 6                              # clobbers &sig
+    or      t6, t5, t6                             # | pos0<<6
 loop_heuristic_sym_p_index_skip1:
     bne     t2, t3, loop_heuristic_sym_p_index_skip2
     slli    t5, t0, 3
-    or      t6, t5, t6                 # | pos3<<3
+    or      t6, t5, t6                             # | pos3<<3
 loop_heuristic_sym_p_index_skip2:
     bne     t2, t4, loop_heuristic_sym_p_index_skip3
-    or      t6, t0, t6                 # | pos6
+    or      t6, t0, t6                             # | pos6
 loop_heuristic_sym_p_index_skip3:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_sym_p_index
 
     add     t6, t6, s7
-    lbu     t6, 0(t6)                  # a = arank[...]
+    lbu     t6, 0(t6)                              # a = arank[...]
 
     # fold y.o[0..5] → t4; keep a in t6
     li      t0, 0
@@ -482,7 +488,7 @@ loop_heuristic_sym_p_index_skip3:
     li      t4, 0
 loop_heuristic_sym_o_index:
     add     t2, s9, t0
-    lbu     t2, 7(t2)                  # y.o[j]
+    lbu     t2, 7(t2)                              # y.o[j]
     slli    t3, t4, 1
     add     t4, t4, t3
     add     t4, t4, t2
@@ -491,12 +497,12 @@ loop_heuristic_sym_o_index:
 
     # idx = a*1024 + o; pdb nibble → s0 (first h, no max yet)
     slli    t0, t6, 10
-    add     t0, t0, t4                 # idx = a*1024 + o
+    add     t0, t0, t4                             # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
+    add     t2, t1, s8                             # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    slli    t4, t0, 2                              # (idx&1)<<2 via slli; andi 4
     andi    t4, t4, 4
     srl     t3, t3, t4
     andi    t0, t3, 15
@@ -506,36 +512,27 @@ loop_heuristic_sym_o_index:
 
 heuristic_skip2:
 
-    # ---------------------------------------------------------------------
-    # h_pos3ori(σ²(s))  —  z = sym3(y), pdb_index(z), max into s0
-    #
-    # C:  state_t z = sym3(&y);   /* same sym3, input = y */
-    #     h = max(h, h_pos3ori(&z));
-    #
-    # Same loops as σ; only bases change (cannot overwrite y in-place —
-    # sym3 scatters via sig[i]):
-    #   in  = y @ S+0   (p[0..6], o[7..13])   — left by σ(s)
-    #   out = z @ S+14  (p[14..20], o[21..27])
-    #
-    # Bases: s7=A, s8=D, s9=S live. Must la t5,sig again (σ index clobbered).
-    # s1 walks y, not states.
-    # ---------------------------------------------------------------------
-    mv      s1, s9                      # cursor at y.p[0]
-    la      t5, sig                     # &sig[0]; kk at t5+7
+    # 3d. h_pos3ori(σ²(s)) — z=sym3(y), pdb_index(z), max into s0
+    #     Same loops as σ; bases differ (cannot overwrite y in-place):
+    #       (a) in  = y @ S+0   (p[0..6], o[7..13])
+    #       (b) out = z @ S+14  (p[14..20], o[21..27])
+    #       (c) must la t5,sig again (σ index clobbered t5)
+    mv      s1, s9                                 # cursor at y.p[0]
+    la      t5, sig                                # &sig[0]; kk at t5+7
 
     # build z.p[sig[i]] = sig[y.p[i]]
     li      t0, 0
     li      t1, 7
 loop_heuristic_sym2_p_build:
-    lbu     t2, 0(s1)                  # y.p[i]
+    lbu     t2, 0(s1)                              # y.p[i]
     add     t3, t2, t5
-    lbu     t3, 0(t3)                  # sig[y.p[i]]
+    lbu     t3, 0(t3)                              # sig[y.p[i]]
 
     add     t2, t0, t5
-    lbu     t2, 0(t2)                  # sig[i]
+    lbu     t2, 0(t2)                              # sig[i]
 
     add     t2, t2, s9
-    sb      t3, 14(t2)                 # z.p[sig[i]]
+    sb      t3, 14(t2)                             # z.p[sig[i]]
 
     addi    t0, t0, 1
     addi    s1, s1, 1
@@ -544,28 +541,28 @@ loop_heuristic_sym2_p_build:
     # build z.o[sig[i]] = (y.o[i]+3+kk[i]-kk[y.p[i]]) % 3; s1 at &y.o[0]
     li      t0, 0
     li      t1, 7
-    li      t6, 3                       # %3 threshold
+    li      t6, 3                                  # %3 threshold
 loop_heuristic_sym2_o_build:
-    lbu     t2, 0(s1)                  # y.o[i]
+    lbu     t2, 0(s1)                              # y.o[i]
     addi    t3, t2, 3
     add     t2, t5, t0
-    lbu     t2, 7(t2)                  # kk[i]
-    add     t4, t2, t3                 # y.o[i]+3+kk[i]
-    lbu     t2, -7(s1)                 # y.p[i]
+    lbu     t2, 7(t2)                              # kk[i]
+    add     t4, t2, t3                             # y.o[i]+3+kk[i]
+    lbu     t2, -7(s1)                             # y.p[i]
     add     t3, t2, t5
-    lbu     t3, 7(t3)                  # kk[y.p[i]]
-    sub     t4, t4, t3                 # y.o[i]+3+kk[i]-kk[y.p[i]]
+    lbu     t3, 7(t3)                              # kk[y.p[i]]
+    sub     t4, t4, t3                             # y.o[i]+3+kk[i]-kk[y.p[i]]
 
     blt     t4, t6, loop_heuristic_sym2_o_skip
     sub     t4, t4, t6
     blt     t4, t6, loop_heuristic_sym2_o_skip
-    sub     t4, t4, t6                 # %3 (t4 was in 2..6)
+    sub     t4, t4, t6                             # %3 (t4 was in 2..6)
 
 loop_heuristic_sym2_o_skip:
     add     t2, t0, t5
-    lbu     t3, 0(t2)                  # sig[i]
+    lbu     t3, 0(t2)                              # sig[i]
     add     t2, t3, s9
-    sb      t4, 21(t2)                 # z.o[sig[i]]
+    sb      t4, 21(t2)                             # z.o[sig[i]]
 
     addi    t0, t0, 1
     addi    s1, s1, 1
@@ -574,28 +571,28 @@ loop_heuristic_sym2_o_skip:
     # pdb_index(z): pack pos of cubies 0,3,6 from z.p into t6, then arank
     li      t0, 0
     li      t1, 7
-    li      t3, 3                       # cubie 3
-    li      t4, 6                       # cubie 6
+    li      t3, 3                                  # cubie 3
+    li      t4, 6                                  # cubie 6
     li      t6, 0
 loop_heuristic_sym2_p_index:
     add     t2, t0, s9
-    lbu     t2, 14(t2)                 # z.p[i]
+    lbu     t2, 14(t2)                             # z.p[i]
     bne     t2, x0, loop_heuristic_sym2_p_index_skip1
-    slli    t5, t0, 6                  # clobbers &sig
-    or      t6, t5, t6                 # | pos0<<6
+    slli    t5, t0, 6                              # clobbers &sig
+    or      t6, t5, t6                             # | pos0<<6
 loop_heuristic_sym2_p_index_skip1:
     bne     t2, t3, loop_heuristic_sym2_p_index_skip2
     slli    t5, t0, 3
-    or      t6, t5, t6                 # | pos3<<3
+    or      t6, t5, t6                             # | pos3<<3
 loop_heuristic_sym2_p_index_skip2:
     bne     t2, t4, loop_heuristic_sym2_p_index_skip3
-    or      t6, t0, t6                 # | pos6
+    or      t6, t0, t6                             # | pos6
 loop_heuristic_sym2_p_index_skip3:
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_sym2_p_index
 
     add     t6, t6, s7
-    lbu     t6, 0(t6)                  # a = arank[...]
+    lbu     t6, 0(t6)                              # a = arank[...]
 
     # fold z.o[0..5] → t4; keep a in t6
     li      t0, 0
@@ -603,7 +600,7 @@ loop_heuristic_sym2_p_index_skip3:
     li      t4, 0
 loop_heuristic_sym2_o_index:
     add     t2, s9, t0
-    lbu     t2, 21(t2)                 # z.o[j]
+    lbu     t2, 21(t2)                             # z.o[j]
     slli    t3, t4, 1
     add     t4, t4, t3
     add     t4, t4, t2
@@ -612,12 +609,12 @@ loop_heuristic_sym2_o_index:
 
     # idx = a*1024 + o; pdb nibble → s0 (first h, no max yet)
     slli    t0, t6, 10
-    add     t0, t0, t4                 # idx = a*1024 + o
+    add     t0, t0, t4                             # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
+    add     t2, t1, s8                             # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    slli    t4, t0, 2                              # (idx&1)<<2 via slli; andi 4
     andi    t4, t4, 4
     srl     t3, t3, t4
     andi    t0, t3, 15
@@ -658,46 +655,46 @@ heuristic_skip3:
     #  | s7  | A (or free)      | A = &rubik_arank                         |
     #  | s8  | D (or free)      | D = &rubik_pdb                           |
     #  | s9  | S (or free)      | S = &scratch                             |
-#  | s10 | out              | out (format; kept)                       |
-#  | s11 | cap              | cap (format; kept)                       |
+    #  | s10 | out              | out (format; kept)                       |
+    #  | s11 | cap              | cap (format; kept)                       |
     #  +-----+------------------+------------------------------------------+
-#  | a0  | clobbered        | temp / dest / index math                 |
-#  | a1  | clobbered        | m                                        |
-#  | a2  | (free)           | σ/σ² pack = pos0<<6|pos3<<3|pos6         |
-#  | a3  | (free)           | &sig (kk at a3+7); pin                   |
-#  | a4  | (free)           | heuristic walk cursor                    |
-#  | a5  | (free)           | face_of[m]                               |
-#  | a6  | (free)           | Fsrc = Q + from_off[m]                   |
-#  | a7  | (free)           | &mod3tab; pin                            |
-#  | t0-6| temps            | apply / h_pos3ori / prune                |
-#  +-----+------------------+------------------------------------------+
-# -------
+    #  | a0  | clobbered        | temp / dest / index math                 |
+    #  | a1  | clobbered        | m                                        |
+    #  | a2  | (free)           | σ/σ² pack = pos0<<6|pos3<<3|pos6 (v5b)   |
+    #  | a3  | (free)           | &sig pin (v5a); kk at a3+7               |
+    #  | a4  | (free)           | heuristic walk cursor (v5a)              |
+    #  | a5  | (free)           | face_of[m]                               |
+    #  | a6  | (free)           | Fsrc = Q + from_off[m]                   |
+    #  | a7  | (free)           | &mod3tab pin (v5c1)                      |
+    #  | t0-6| temps            | apply / h_pos3ori / prune                |
+    #  +-----+------------------+------------------------------------------+
 
 ida_start:
-    # 4. IDA* outer: bound = h(root) .. MAX_DEPTH; each bound → DFS (step 5).
-    #
-    li      s1, 9                       # s1 = MOVES (fixed for search)
+    # 4. IDA* outer: bound = h(root) .. MAX_DEPTH; each bound → DFS (step 5)
+    #    v5a: s1=MOVES for whole search; a3=&sig pinned
+    #    v5c1: a7=&mod3tab pinned (hot %3 = lbu, no subtract loop)
+    li      s1, 9                                  # s1 = MOVES (fixed for search)
 
-    la      s6, face_of                 # s6 = F = &face_of[0]
-    la      s7, rubik_arank             # s7 = A = &rubik_arank[0]
-    la      s8, rubik_pdb               # s8 = D = &rubik_pdb[0]
-    la      s9, scratch                 # s9 = S = &scratch[0]
-    la      a3, sig                     # a3 = &sig; kk at a3+7 (do not clobber)
-    la      a7, mod3tab                 # a7 = &mod3tab[0..6] (do not clobber)
+    la      s6, face_of                            # s6 = F = &face_of[0]
+    la      s7, rubik_arank                        # s7 = A = &rubik_arank[0]
+    la      s8, rubik_pdb                          # s8 = D = &rubik_pdb[0]
+    la      s9, scratch                            # s9 = S = &scratch[0]
+    la      a3, sig                                # a3 = &sig; kk at a3+7 (do not clobber)
+    la      a7, mod3tab                            # a7 = &mod3tab[0..6] (do not clobber)
 
 
 loop_solve:
 
-    li      s2, 0                       # s2 = g = 0
-    addi    s3, s0, -1                  # s3 = r = bound - 1
-    la      s4, states                  # s4 = Q = &states[0]
-    la      s5, path                    # s5 = P = &path[0]
-    sb      x0, 11(s5)                  # next[0] = 0 (next[0] = P + 11)
+    li      s2, 0                                  # s2 = g = 0
+    addi    s3, s0, -1                             # s3 = r = bound - 1
+    la      s4, states                             # s4 = Q = &states[0]
+    la      s5, path                               # s5 = P = &path[0]
+    sb      x0, 11(s5)                             # next[0] = 0 (next[0] = P + 11)
 
     # same_face and pop sit right above search_top so both fall into
     # it. Jumping over them costs a taken branch once per bound,
     # instead of one per pop.
-    j       search_top                  # skip same_face and pop
+    j       search_top                             # skip same_face and pop
 
     # 5. One bounded depth-first pass with the explicit stack.
     # ida.c: search
@@ -723,8 +720,8 @@ loop_solve:
     # MOVES it falls into pop; next[g] is not stored then, since a later
     # push to this depth enters child at m = 0 without reading it.
 same_face:
-    addi    a1, t2, 2                   # a1 = m + 3: first turn of the next face
-    bne     a1, s1, child               # m + 3 != MOVES: try the next face
+    addi    a1, t2, 2                              # a1 = m + 3: first turn of the next face
+    bne     a1, s1, child                          # m + 3 != MOVES: try the next face
 
     # All moves of depth g tried: back to the parent, then fall into
     # search_top. The parent's next[g] and pface[g] are no longer in any
@@ -734,12 +731,12 @@ same_face:
     # --g;
     # continue;
 pop:
-    beq     s2, x0, bound_failed        # all moves tried at the root
+    beq     s2, x0, bound_failed                   # all moves tried at the root
 
-    addi    s2, s2, -1                  # s2 = g = g - 1
-    addi    s3, s3, 1                   # s3 = r = r + 1
-    addi    s4, s4, -16                 # Q = &states[g - 1]
-    addi    s5, s5, -1                  # P = &path[g - 1]
+    addi    s2, s2, -1                             # s2 = g = g - 1
+    addi    s3, s3, 1                              # s3 = r = r + 1
+    addi    s4, s4, -16                            # Q = &states[g - 1]
+    addi    s5, s5, -1                             # P = &path[g - 1]
 
 
     # if (next[g] == MOVES) goto pop;
@@ -747,9 +744,9 @@ pop:
     # pface[g] is loaded before the beq to fill the slot after lbu a1;
     # a pop loads it for nothing (one instruction).
 search_top:
-    lbu     a1, 11(s5)                  # a1 = m = next[g] = *(P + 11)
-    lbu     t5, 23(s5)                  # t5 = pface[g] = face_of[path[g - 1]]
-    beq     a1, s1, pop                 # next[g] == MOVES: all moves tried
+    lbu     a1, 11(s5)                             # a1 = m = next[g] = *(P + 11)
+    lbu     t5, 23(s5)                             # t5 = pface[g] = face_of[path[g - 1]]
+    beq     a1, s1, pop                            # next[g] == MOVES: all moves tried
 
     # unsigned m = next[g]++;
     # if (face_of[m] == pface[g])     /* pface[0] = 3: never at the root */
@@ -757,58 +754,58 @@ search_top:
     #
     # The next[g] store sits between lbu a5 and the beq that reads a5.
 child:
-    add     t3, s6, a1                  # face_of[m]'s memory
-    lbu     a5,  0(t3)                  # a5 = face_of[m]
-    addi    t2, a1, 1                   # t2 = m + 1
-    sb      t2, 11(s5)                  # next[g] = m + 1
-    beq     t5, a5, same_face           # same face as path[g - 1]: skip it
+    add     t3, s6, a1                             # face_of[m]'s memory
+    lbu     a5,  0(t3)                             # a5 = face_of[m]
+    addi    t2, a1, 1                              # t2 = m + 1
+    sb      t2, 11(s5)                             # next[g] = m + 1
+    beq     t5, a5, same_face                      # same face as path[g - 1]: skip it
 
-    # -----------------------------------------------------------------
-    # apply v4b: always ONE quarter; src = Q + from_off[m]
-    #   R/B/D:  off=0  → parent Q → dest Q+16
-    #   R2/R':  off=16 → sibling at Q+16 → dest scratch → copy to Q+16
-    # Equiv. to C apply(parent,m) when moves tried in face order; do NOT
-    # also multiply by turns_of (that double-counts).
-    # -----------------------------------------------------------------
+    # 5a. apply (v4b): always ONE quarter; src = Q + from_off[m]
+    #     (a) R/B/D:  off=0  → parent Q → dest Q+16
+    #     (b) R2/R':  off=16 → sibling Q+16 → scratch → copy to Q+16
+    #     (c) ≡ C apply(parent,m) in face order; do NOT also use turns_of
+    #     (d) v5c1: ori via mod3tab[a7]; v5c4: LU fills in apply_1q
 no_prev:
     la      t4, source
-    slli    t1, a5, 3                   # face * 8
-    add     t4, t4, t1                  # t4 = &source[face][0]
+    slli    t1, a5, 3                              # face * 8
+    add     t4, t4, t1                             # t4 = &source[face][0]
     la      t5, twist
-    add     t5, t5, t1                  # t5 = &twist[face][0]
+    add     t5, t5, t1                             # t5 = &twist[face][0]
 
-    lbu     t0, 18(t3)                  # t0 = from_off[m]
+    lbu     t0, 18(t3)                             # t0 = from_off[m]
     add     a6, s4, t0
-    addi    a0, s4, 16                  # Q + 16
+    addi    a0, s4, 16                             # Q + 16
 
     beqz    t0, apply_1q_skip
-    mv      a0, s9                      # sibling: dest = scratch
+    mv      a0, s9                                 # sibling: dest = scratch
 apply_1q_skip:
     li      t0, 7
 
-    # apply_1q LU: dest (&t3) fills from→use; &twist (t2) fills p→sb;
-    # twist lbu fills o→add. mod3→sb / twist→add may still stall 1.
+    # v5c4 apply_1q LU schedule:
+    #   (a) add dest (t3) fills from→use
+    #   (b) add &twist (t2) fills p→sb
+    #   (c) lbu twist fills o→add; mod3→sb may still stall 1
 apply_1q:
     addi    t0, t0, -1
     add     t1, t4, t0
-    lbu     t1, 0(t1)          # from = source[face][i]
+    lbu     t1, 0(t1)                              # from = source[face][i]
 
-    add     t3, a0, t0         # &dest.p[i] (fill from)
+    add     t3, a0, t0                             # &dest.p[i] (fill from)
     add     t6, a6, t1
-    lbu     t6, 0(t6)          # p
+    lbu     t6, 0(t6)                              # p
 
-    add     t2, t5, t0         # &twist[face][i] (fill p→sb)
+    add     t2, t5, t0                             # &twist[face][i] (fill p→sb)
     sb      t6, 0(t3)
 
     add     t6, a6, t1
-    lbu     t6, 7(t6)          # o
-    lbu     t1, 0(t2)          # twist[face][i] (fill o)
-    add     t6, t6, t1         # o + twist
+    lbu     t6, 7(t6)                              # o
+    lbu     t1, 0(t2)                              # twist[face][i] (fill o)
+    add     t6, t6, t1                             # o + twist
 
-    add     t6, a7, t6         # &mod3tab[o + twist]
-    lbu     t6, 0(t6)          # mod3tab[o + twist]
+    add     t6, a7, t6                             # &mod3tab[o + twist]
+    lbu     t6, 0(t6)                              # mod3tab[o + twist]
 
-    sb      t6, 7(t3)          # may load-use stall 1
+    sb      t6, 7(t3)                              # may load-use stall 1
     bnez    t0, apply_1q
 
 
@@ -826,106 +823,107 @@ apply_sw_loop:
     mv      a6, t1
 
 heuristic_core:
-    # child @ Q+16; keep a1=m, a5=face
-    # r==0: identity → found (len=g+1); else search_top (align C)
-    # r!=0: waterfall s → inv → σ → σ²; each view PDB_NIBBLE, h>r → prune
+    # 5b. Hot child heuristic — keep a1=m, a5=face; child @ Q+16
+    #     v5c2: beqz s3 → r0_id_path (cold); r≠0 falls into waterfall
+    #     v2b:  s → inv → σ → σ²; each PDB_NIBBLE, h>r → search_top
+    #     v5a:  walk=a4; s1 stays MOVES (no li s1,9 in nibble)
 
-    beqz    s3, r0_id_path
+    beqz    s3, r0_id_path                         # v5c2: rare r==0
 
-    # PDB_NIBBLE: t6=a, t4=o → t0=h; if h>r → search_top
-    # clobbers t1-t3, t4 (parity scratch). s1 stays MOVES (no reload).
-    # Nibble shift (GCC tip): slli 2; andi 4 ≡ (idx&1)<<2, one fewer than
-    # andi 1; slli 2. lbu→srl keeps a 2-insn gap for the load-use slot.
+    # PDB_NIBBLE (v3 idx + v5c3 form): t6=a, t4=o → t0=h; prune if h>r
+    #   (a) idx=(a<<10)+o; nibble extract; bltu s3,t0,search_top
+    #   (b) slli;andi 4 ≡ (idx&1)<<2 (same length as andi 1;slli 2)
+    #   (c) lbu→srl has 2-insn gap; s1=MOVES untouched
     .macro  PDB_NIBBLE
     slli    t0, t6, 10
-    add     t0, t0, t4                 # idx = a*1024 + o
+    add     t0, t0, t4                             # idx = a*1024 + o
 
     srli    t1, t0, 1
-    add     t2, t1, s8                 # &pdb[idx>>1]
+    add     t2, t1, s8                             # &pdb[idx>>1]
     lbu     t3, 0(t2)
-    slli    t4, t0, 2                  # (idx&1)<<2 via slli; andi 4
+    slli    t4, t0, 2                              # (idx&1)<<2
     andi    t4, t4, 4
     srl     t3, t3, t4
-    andi    t0, t3, 15                 # t0 = h
+    andi    t0, t3, 15                             # t0 = h
 
-    bltu    s3, t0, search_top         # r < h → prune
+    bltu    s3, t0, search_top                     # r < h → prune
     .endm
 
     # --- h(s): pos in scratch; fold o; PDB_NIBBLE ---
-    addi    a4, s4, 16                 # a4 = &child.p[0]
+    addi    a4, s4, 16                             # a4 = &child.p[0]
 
-    # build pos[]: scratch[p[i]] = i
-    # LU: bump a4 between lbu p and add (fills load-use; still ends at &o[0])
+    # build pos[]: scratch[p[i]]=i  (v5c5: addi a4 fills lbu→add)
     li      t0, 0
     li      t1, 7
 loop_heuristic_core_p:
-    lbu     t2, 0(a4)                  # p[i]
-    addi    a4, a4, 1                  # fill p→use
+    lbu     t2, 0(a4)                              # p[i]
+    addi    a4, a4, 1                              # v5c5 fill p→use
     add     t3, t2, s9
-    sb      t0, 0(t3)                  # scratch[p[i]] = i
+    sb      t0, 0(t3)                              # scratch[p[i]] = i
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_p
 
     # a = arank[pos0<<6 | pos3<<3 | pos6]; a4 now at &child.o[0]
-    lbu     t0, 0(s9)                  # pos0 = scratch[0]
-    lbu     t1, 3(s9)                  # pos3 = scratch[3]
-    lbu     t2, 6(s9)                  # pos6 = scratch[6]
-    slli    t3, t0, 6                  # pos0 << 6
-    slli    t4, t1, 3                  # pos3 << 3
+    lbu     t0, 0(s9)                              # pos0 = scratch[0]
+    lbu     t1, 3(s9)                              # pos3 = scratch[3]
+    lbu     t2, 6(s9)                              # pos6 = scratch[6]
+    slli    t3, t0, 6                              # pos0 << 6
+    slli    t4, t1, 3                              # pos3 << 3
     or      t5, t3, t4
-    or      t5, t5, t2                 # pack
+    or      t5, t5, t2                             # pack
     add     t6, t5, s7
-    lbu     t6, 0(t6)                  # a = arank[...]
+    lbu     t6, 0(t6)                              # a = arank[...]
 
     # fold s.o[0..5] → t4
     li      t0, 0
     li      t1, 6
-    li      t4, 0                       # o = 0
+    li      t4, 0                                  # o = 0
 loop_heuristic_core_o:
-    lbu     t2, 0(a4)                  # o[i]
-    slli    t3, t4, 1                  # o*2
-    add     t4, t4, t3                 # o*3
-    add     t4, t4, t2                 # o*3 + o[i]
+    lbu     t2, 0(a4)                              # o[i]
+    slli    t3, t4, 1                              # o*2
+    add     t4, t4, t3                             # o*3
+    add     t4, t4, t2                             # o*3 + o[i]
     addi    t0, t0, 1
     addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_o
 
     PDB_NIBBLE
 
-    # --- h(inv): reuse pos from h(s); arank from child.p[0|3|6] ---
+    # --- h(inv): reuse pos from h(s); arank from child.p[0|3|6] (v2b) ---
+    #     v5c1: inv.o via mod3tab[a7]
     addi    a4, s4, 16
-    addi    a4, a4, 7                  # &child.o[0] (no inv_p rebuild)
+    addi    a4, a4, 7                              # &child.o[0] (no inv_p rebuild)
 
     # a = arank[child.p[0]<<6 | p[3]<<3 | p[6]]
     addi    t0, s4, 16
-    lbu     t1, 0(t0)                  # child.p[0]
-    lbu     t2, 3(t0)                  # child.p[3]
-    lbu     t3, 6(t0)                  # child.p[6]
+    lbu     t1, 0(t0)                              # child.p[0]
+    lbu     t2, 3(t0)                              # child.p[3]
+    lbu     t3, 6(t0)                              # child.p[6]
     slli    t4, t1, 6
     slli    t5, t2, 3
     or      t4, t4, t5
     or      t4, t4, t3
     add     t6, t4, s7
-    lbu     t6, 0(t6)                  # a = arank[...]
+    lbu     t6, 0(t6)                              # a = arank[...]
 
     # fold inv.o[0..5]: o=(3-s.o[i])%3, i=scratch[j]
     li      t0, 0
     li      t1, 6
-    li      t4, 0                       # o fold = 0
-    li      t5, 3                       # for (3-x)%3
+    li      t4, 0                                  # o fold = 0
+    li      t5, 3                                  # for (3-x)%3
 loop_heuristic_core_inv_o:
     add     t2, s9, t0
-    lbu     t2, 0(t2)                  # i = scratch[j] = inv.p[j]
+    lbu     t2, 0(t2)                              # i = scratch[j] = inv.p[j]
     add     t2, a4, t2
-    lbu     t2, 0(t2)                  # s.o[i]
-    sub     t3, t5, t2                 # 3 - s.o[i]
+    lbu     t2, 0(t2)                              # s.o[i]
+    sub     t3, t5, t2                             # 3 - s.o[i]
 
     add     t3, a7, t3
-    lbu     t3, 0(t3)                  # mod3tab[3 - s.o[i]]
+    lbu     t3, 0(t3)                              # mod3tab[3 - s.o[i]]
 
     slli    t2, t4, 1
-    add     t4, t4, t2                 # o*3
-    add     t4, t4, t3                 # + inv.o[j]
+    add     t4, t4, t2                             # o*3
+    add     t4, t4, t3                             # + inv.o[j]
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_inv_o
 
@@ -933,81 +931,82 @@ loop_heuristic_core_inv_o:
 
 
     # --- h(σ(child)): y @ scratch[0..13]; then PDB_NIBBLE ---
-    # y.p[sig[i]]=sig[p[i]]; y.o[sig[i]]=(o+3+kk[i]-kk[p[i]])%3
-    # While scattering y.p, if written cubie is 0|3|6, fold sig[i] into
-    # a2 = pos0<<6|pos3<<3|pos6 (t6=slli temp; t4=3,t5=6). No 7-slot scan.
+    #     y.p[sig[i]]=sig[p[i]]; y.o[sig[i]]=(o+3+kk[i]-kk[p[i]])%3
+    #     v5b: while scattering y.p, if value is cubie 0|3|6 fold sig[i]
+    #          into a2=pos0<<6|pos3<<3|pos6 — no 7-scan index
+    #     v5c1: %3 via mod3tab[a7]; a3=&sig pinned (v5a)
     addi    a4, s4, 16
 
 
-    # build y.p[sig[i]] = sig[p[i]] + arank pack in a2
+    # build y.p[sig[i]] = sig[p[i]] + arank pack in a2 (v5b)
     li      t0, 0
     li      t1, 7
-    li      t4, 3                       # cubie 3
-    li      t5, 6                       # cubie 6
-    li      a2, 0                      # a2 = pack
+    li      t4, 3                                  # cubie 3
+    li      t5, 6                                  # cubie 6
+    li      a2, 0                                  # a2 = pack
 loop_heuristic_core_sym_p_build:
-    lbu     t2, 0(a4)                  # p[i]
+    lbu     t2, 0(a4)                              # p[i]
     add     t3, t2, a3
-    lbu     t3, 0(t3)                  # sig[p[i]] = value
+    lbu     t3, 0(t3)                              # sig[p[i]] = value
 
     add     t2, t0, a3
-    lbu     t2, 0(t2)                  # sig[i] = dest index
+    lbu     t2, 0(t2)                              # sig[i] = dest index
 
     # pack before t2 += S (need bare sig[i])
     bnez    t3, loop_heuristic_core_sym_p_build_skip1
     slli    t6, t2, 6
-    or      a2, a2, t6                 # | pos0<<6
+    or      a2, a2, t6                             # | pos0<<6
 
 loop_heuristic_core_sym_p_build_skip1:
     bne     t3, t4, loop_heuristic_core_sym_p_build_skip2
     slli    t6, t2, 3
-    or      a2, a2, t6                 # | pos3<<3
+    or      a2, a2, t6                             # | pos3<<3
 
 loop_heuristic_core_sym_p_build_skip2:
     bne     t3, t5, loop_heuristic_core_sym_p_build_skip3
-    or      a2, a2, t2                 # | pos6
+    or      a2, a2, t2                             # | pos6
 
 loop_heuristic_core_sym_p_build_skip3:
 
     add     t2, t2, s9
-    sb      t3, 0(t2)                  # y.p[sig[i]]
+    sb      t3, 0(t2)                              # y.p[sig[i]]
 
     addi    t0, t0, 1
     addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_sym_p_build
 
 
-    # build y.o[...]; a2 pack live; %3 via mod3tab (a7)
+    # build y.o[...]; a2 pack live; v5c1 %3 via mod3tab (a7)
     li      t0, 0
     li      t1, 7
 
 loop_heuristic_core_sym_o_build:
-    lbu     t2, 0(a4)                  # o[i]
+    lbu     t2, 0(a4)                              # o[i]
     addi    t3, t2, 3
     add     t2, a3, t0
-    lbu     t2, 7(t2)                  # kk[i]
-    add     t4, t2, t3                 # o[i]+3+kk[i]
-    lbu     t2, -7(a4)                 # p[i]
+    lbu     t2, 7(t2)                              # kk[i]
+    add     t4, t2, t3                             # o[i]+3+kk[i]
+    lbu     t2, -7(a4)                             # p[i]
     add     t3, t2, a3
-    lbu     t3, 7(t3)                  # kk[p[i]]
-    sub     t4, t4, t3                 # o[i]+3+kk[i]-kk[p[i]]
+    lbu     t3, 7(t3)                              # kk[p[i]]
+    sub     t4, t4, t3                             # o[i]+3+kk[i]-kk[p[i]]
 
     add     t4, a7, t4
-    lbu     t4, 0(t4)                  # mod3tab[o[i]+3+kk[i]-kk[p[i]]]
+    lbu     t4, 0(t4)                              # mod3tab[o[i]+3+kk[i]-kk[p[i]]]
 
     add     t2, t0, a3
-    lbu     t3, 0(t2)                  # sig[i]
+    lbu     t3, 0(t2)                              # sig[i]
     add     t2, t3, s9
-    sb      t4, 7(t2)                  # y.o[sig[i]]
+    sb      t4, 7(t2)                              # y.o[sig[i]]
 
     addi    t0, t0, 1
     addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_sym_o_build
 
-    # arank from pack built in p_build (a2); no sym_p_index scan
+    # v5b: arank from pack in a2 (no sym_p_index 7-scan)
     mv      t6, a2
     add     t6, t6, s7
-    lbu     t6, 0(t6)                  # a = arank[pack]
+    lbu     t6, 0(t6)                              # a = arank[pack]
 
     # fold y.o[0..5] → t4; keep a in t6
     li      t0, 0
@@ -1015,7 +1014,7 @@ loop_heuristic_core_sym_o_build:
     li      t4, 0
 loop_heuristic_core_sym_o_index:
     add     t2, s9, t0
-    lbu     t2, 7(t2)                  # y.o[j]
+    lbu     t2, 7(t2)                              # y.o[j]
     slli    t3, t4, 1
     add     t4, t4, t3
     add     t4, t4, t2
@@ -1026,23 +1025,23 @@ loop_heuristic_core_sym_o_index:
     PDB_NIBBLE
 
 
-    # --- h(σ²): z = sym3(y); in=y@S+0, out=z@S+14; same pack-while-scatter ---
-    mv      a4, s9                      # y.p[0], not child
+    # --- h(σ²): z=sym3(y); in=y@S+0, out=z@S+14; same v5b pack-while-scatter ---
+    mv      a4, s9                                 # y.p[0], not child
 
 
-    # build z.p[sig[i]] = sig[y.p[i]] at S+14; pack into a2
+    # build z.p[sig[i]] = sig[y.p[i]] at S+14; pack into a2 (v5b)
     li      t0, 0
     li      t1, 7
     li      t4, 3
     li      t5, 6
-    li      a2, 0                      # a2 = pack (fresh for z)
+    li      a2, 0                                  # a2 = pack (fresh for z)
 loop_heuristic_core_sym2_p_build:
-    lbu     t2, 0(a4)                  # y.p[i]
+    lbu     t2, 0(a4)                              # y.p[i]
     add     t3, t2, a3
-    lbu     t3, 0(t3)                  # sig[y.p[i]] = value
+    lbu     t3, 0(t3)                              # sig[y.p[i]] = value
 
     add     t2, t0, a3
-    lbu     t2, 0(t2)                  # sig[i] = dest
+    lbu     t2, 0(t2)                              # sig[i] = dest
 
     bnez    t3, loop_heuristic_core_sym2_p_build_skip1
     slli    t6, t2, 6
@@ -1060,7 +1059,7 @@ loop_heuristic_core_sym2_p_build_skip2:
 loop_heuristic_core_sym2_p_build_skip3:
 
     add     t2, t2, s9
-    sb      t3, 14(t2)                 # z.p[sig[i]] (not y.p @0)
+    sb      t3, 14(t2)                             # z.p[sig[i]] (not y.p @0)
 
     addi    t0, t0, 1
     addi    a4, a4, 1
@@ -1071,33 +1070,33 @@ loop_heuristic_core_sym2_p_build_skip3:
     li      t1, 7
 
 loop_heuristic_core_sym2_o_build:
-    lbu     t2, 0(a4)                  # y.o[i]
+    lbu     t2, 0(a4)                              # y.o[i]
     addi    t3, t2, 3
     add     t2, a3, t0
-    lbu     t2, 7(t2)                  # kk[i]
-    add     t4, t2, t3                 # y.o[i]+3+kk[i]
-    lbu     t2, -7(a4)                 # y.p[i]
+    lbu     t2, 7(t2)                              # kk[i]
+    add     t4, t2, t3                             # y.o[i]+3+kk[i]
+    lbu     t2, -7(a4)                             # y.p[i]
     add     t3, t2, a3
-    lbu     t3, 7(t3)                  # kk[y.p[i]]
-    sub     t4, t4, t3                 # y.o[i]+3+kk[i]-kk[y.p[i]]
+    lbu     t3, 7(t3)                              # kk[y.p[i]]
+    sub     t4, t4, t3                             # y.o[i]+3+kk[i]-kk[y.p[i]]
 
     add     t4, a7, t4
-    lbu     t4, 0(t4)                  # mod3tab[y.o[i]+3+kk[i]-kk[y.p[i]]]
+    lbu     t4, 0(t4)                              # mod3tab[y.o[i]+3+kk[i]-kk[y.p[i]]]
 
     add     t2, t0, a3
-    lbu     t3, 0(t2)                  # sig[i]
+    lbu     t3, 0(t2)                              # sig[i]
     add     t2, t3, s9
-    sb      t4, 21(t2)                 # z.o[sig[i]]
+    sb      t4, 21(t2)                             # z.o[sig[i]]
 
     addi    t0, t0, 1
     addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_sym2_o_build
 
 
-    # arank from z pack in a2; no sym2_p_index scan
+    # v5b: arank from z pack in a2 (no sym2_p_index 7-scan)
     mv      t6, a2
     add     t6, t6, s7
-    lbu     t6, 0(t6)                  # a = arank[pack]
+    lbu     t6, 0(t6)                              # a = arank[pack]
 
     # fold z.o[0..5] → t4; keep a in t6
     li      t0, 0
@@ -1105,7 +1104,7 @@ loop_heuristic_core_sym2_o_build:
     li      t4, 0
 loop_heuristic_core_sym2_o_index:
     add     t2, s9, t0
-    lbu     t2, 21(t2)                 # z.o[j]
+    lbu     t2, 21(t2)                             # z.o[j]
     slli    t3, t4, 1
     add     t4, t4, t3
     add     t4, t4, t2
@@ -1114,22 +1113,22 @@ loop_heuristic_core_sym2_o_index:
 
     PDB_NIBBLE
 
-    # all views h <= r: push; identity → found, else deepen (m=0)
-    sb      a1,  0(s5)                  # path[g] = m
-    li      a1, 0                       # a1 = m = 0 for the child
-    sb      a5, 24(s5)                  # pface[g + 1] = face_of[m] (P + 24)
+    # all views h<=r: push; identity → found, else deepen at child (m=0)
+    sb      a1,  0(s5)                             # path[g] = m
+    li      a1, 0                                  # a1 = m = 0 for the child
+    sb      a5, 24(s5)                             # pface[g + 1] = face_of[m] (P + 24)
 
-    addi    s2, s2, 1                   # s2 = g = g + 1
-    addi    s3, s3, -1                  # s3 = r = r - 1
-    addi    s4, s4, 16                  # Q = &states[g + 1]
-    addi    s5, s5, 1                   # P = &path[g + 1]
+    addi    s2, s2, 1                              # s2 = g = g + 1
+    addi    s3, s3, -1                             # s3 = r = r - 1
+    addi    s4, s4, 16                             # Q = &states[g + 1]
+    addi    s5, s5, 1                              # P = &path[g + 1]
 
-    mv      t5, a5                      # pface for next depth
+    mv      t5, a5                                 # pface for next depth
     li      t0, 0
     li      t1, 7
     mv      t6, s4
 solve_loop:
-    lbu     t2, 0(t6)                  # t2 = p[i]
+    lbu     t2, 0(t6)                              # t2 = p[i]
     bne     t0, t2, child
     lbu     t2, 7(t6)
     bnez    t2, child
@@ -1140,20 +1139,21 @@ solve_loop:
 
 
 found:
-    # format path[0..g) into out: length (need) → cap check → write + NUL
-    # need = sum(name lens) + (g-1) spaces + 1 NUL; return a0=g or -2
+    # 6. format path[0..g) into out
+    #    (a) need = sum(name lens) + (g-1) spaces + 1 NUL
+    #    (b) if cap < need → -2; else write names + NUL; return a0=g
     la      s5, path
     la      t6, move_names
 
     li      t0, 0
-    li      t5, 0                       # t5 = need
+    li      t5, 0                                  # t5 = need
 found_length_loop:
     add     t1, t0, s5
-    lbu     t2, 0(t1)                   # t2 = path[i]
+    lbu     t2, 0(t1)                              # t2 = path[i]
     
     slli    t1, t2, 1
-    add     t1, t6, t1                  # t1 = &move_names[path[i]]
-    lbu     t2, 1(t1)                   # t2 = move_names[path[i]][1]
+    add     t1, t6, t1                             # t1 = &move_names[path[i]]
+    lbu     t2, 1(t1)                              # t2 = move_names[path[i]][1]
     addi    t5, t5, 1
     beqz    t2, found_length_loop_skip1
     addi    t5, t5, 1
@@ -1173,22 +1173,22 @@ found_length_loop_skip2:
     bltu    s11, t5, found_cap_fail 
 
     li      t0, 0
-    mv      t4, s10                     # out cursor
+    mv      t4, s10                                # out cursor
 found_index_loop:
     beqz    t0, found_index_loop_skip1                
-    li      t2, 32                      # ' '
+    li      t2, 32                                 # ' '
     sb      t2, 0(t4)
     addi    t4, t4, 1
 
 found_index_loop_skip1:
     add     t1, s5, t0
-    lbu     t2, 0(t1)                   # m
+    lbu     t2, 0(t1)                              # m
     slli    t1, t2, 1
-    add     t1, t6, t1                  # &move_names[m]
-    lbu     t2, 0(t1)                   # name[0]
+    add     t1, t6, t1                             # &move_names[m]
+    lbu     t2, 0(t1)                              # name[0]
     sb      t2, 0(t4)
     addi    t4, t4, 1
-    lbu     t2, 1(t1)                   # name[1]
+    lbu     t2, 1(t1)                              # name[1]
     beqz    t2, found_index_loop_skip2
     sb      t2, 0(t4)
     addi    t4, t4, 1
@@ -1200,40 +1200,40 @@ found_index_loop_skip2:
 
 
 found_index_done:
-    sb      x0, 0(t4)                   # NUL
+    sb      x0, 0(t4)                              # NUL
     mv      a0, s2
     j       epilogue
 
+    # v5c2 cold path: r==0 → identity check (align C); success → found
 r0_id_path:
-
-    addi    t6, s4, 16                 # &child
+    addi    t6, s4, 16                             # &child
     li      t0, 0
     li      t1, 7
 r0_id:
-    lbu     t2, 0(t6)                  # p[i]
-    bne     t0, t2, search_top         # unsolved, r==0 → prune
-    lbu     t2, 7(t6)                  # o[i]
+    lbu     t2, 0(t6)                              # p[i]
+    bne     t0, t2, search_top                     # unsolved, r==0 → prune
+    lbu     t2, 7(t6)                              # o[i]
     bnez    t2, search_top
     addi    t0, t0, 1
     addi    t6, t6, 1
     bne     t0, t1, r0_id
 
-    sb      a1, 0(s5)                  # path[g] = m
-    addi    s2, s2, 1                  # length = g+1 for found
+    sb      a1, 0(s5)                              # path[g] = m
+    addi    s2, s2, 1                              # length = g+1 for found
     j       found
 
 found_cap_fail:
-    beqz    s11, found_cap_fail_skip1    # cap == 0: don't write NUL
+    beqz    s11, found_cap_fail_skip1              # cap == 0: don't write NUL
     sb      x0, 0(s10)
 found_cap_fail_skip1: 
-    li      a0, -2                      # cap < need: return -2
+    li      a0, -2                                 # cap < need: return -2
     j       epilogue
 
 bound_failed:
-    addi    s0, s0, 1                   # ++bound
-    addi    t0, x0, 11                  # MAX_DEPTH
+    addi    s0, s0, 1                              # ++bound
+    addi    t0, x0, 11                             # MAX_DEPTH
     bleu    s0, t0, loop_solve
-    li      a0, -1                      # should not happen on valid states
+    li      a0, -1                                 # should not happen on valid states
 
 epilogue:
     lw      s0,  0(sp)
