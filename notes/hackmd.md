@@ -27,19 +27,57 @@ Port of Homework 1’s 2×2 cube solver to the `arch2026-progs` contract (`rubik
 
 ## 1.1 Principle of the code
 
-<!-- Algorithm: IDA* + pattern database / distance tables; why it finds a shortest solution. -->
+The solver is **iterative deepening A\*** (IDA*) over the Pocket Cube’s nine face turns. Each IDA* iteration deepens with a fixed `bound`; a child is pruned when `g + 1 + h(child) > bound` (equivalently `h > r` with `r = bound - g - 1`). When the bound reaches the true distance, the first goal found is a **shortest** path: IDA* never accepts a longer path before a shorter one has been ruled out.
+
+The heuristic is an **admissible** pattern-database lookup on a packed `(a, o)` index (pos3ori): seven cubie positions contribute an even-permutation rank `a`, and six orientations (the seventh is determined) fold into `o < 729`. To tighten `h` without losing admissibility, the search takes
+
+\[
+h = \max\bigl(h(s),\; h(s^{-1}),\; h(\sigma(s)),\; h(\sigma^{2}(s))\bigr)
+\]
+
+and **waterfalls** the four views in order `s → inv → σ → σ²`, stopping as soon as a view exceeds `r`. ASM keeps an explicit stack (`states[]` / `path[]`) instead of recursion so the 4 KiB stack and RV32I register file stay under control. The contract API is `rubik_solve` / `rubik_solve_asm(state, out, cap)`: parse 14 characters, write a space-separated move string, return length or `-1`/`-2`.
 
 ## 1.2 Mathematical foundation
 
-<!-- State space size; move generators; distance metric; encoding of the 14-character state; what “shortest” means. -->
+**State space.** Model of `sysprog21/minirubik`: seven movable cubies, orientations in \(\{0,1,2\}\) with \(\sum o_i \equiv 0 \pmod 3\). Reachable size is
+
+\[
+7! \times 3^{6} = 3{,}674{,}160.
+\]
+
+God’s number for this metric is **11**; there are **2644** states at distance 11 (the hard KPI layer).
+
+**Encoding.** Fourteen ASCII digits `PPPPPPPOOOOOOO`: permutation `'1'..'7'` then orientation `'1'..'3'`. Solved cube: `12345671111111`.
+
+**Generators.** Faces R, B, D; nine moves `R R2 R' B B2 B' D D2 D'`. Same-face consecutive moves are skipped in search (`face_of`).
+
+**Distance / “shortest”.** Length = number of those nine tokens. A solution is accepted only if its length equals the BFS distance; a path that merely reaches solved is not enough if a shorter one exists. The PDB stores a lower bound on that distance, so IDA* with `max` of conjugates remains admissible and returns exact length when the bound catches up.
+
+**Index (v3+).** Nibble PDB with stride 1024: `idx = (a << 10) + o` (live `o < 729`; padding buys a shift instead of `a*729`).
 
 ## 1.3 Analysis
 
-<!-- Error / correctness against a host reference; instruction and cycle counts (`@@perf` / `make cycles`); footprint vs `RUBIK_DATA_BUDGET`. -->
+**Correctness.** Course ELF **52/52**. On all **2644** d11 states, ASM length matches C; `bad=0`. Host waterfall / node scans (notes under `notes/rubik/`) checked full-space orders earlier; the graded path is guest + harness.
+
+**Speed (rv32emu).** Here `cycle` ≡ `instret` (CPI = 1), so the d11 **mean** is an instruction KPI:
+
+| | C `-O2` (v3 tables) | ASM **v5c5** | ratio |
+|--|--------------------:|-------------:|------:|
+| d11 mean (2644) | 1,742,455 | **664,235** | **2.62×** |
+| harness 6-depth | 322,553 | **127,851** | **2.52×** |
+
+Peak ASM d11 max ≈ 3.65M ≪ `RUBIK_INSN_BUDGET` (7.5M). C `-O3` still trails ASM (~1.95× on an earlier v5a cut) — inlining helps C, but waterfall + sibling apply + pinned regs dominate.
+
+**Pipeline (Ripes `RV32_5S`).** Sampled emu min/max d11 states (not the 2644 mean). Final ASM: min **347,090** cycles (CPI **1.283**), max **4,674,656** (CPI **1.280**). Detail: §1.5 and [`bench-v1.md`](rubik/bench-v1.md).
+
+**Footprint.** `RUBIK_DATA_BUDGET` = 128 KiB (`size -A`). ASM `impl_asm.o` **v5c5**: `.text` **2788** + data **108405** → **111,193** ok. C `-O2` impl ≈ **110,298**.
 
 ## 1.4 Verification
 
-<!-- micro-test coverage: distance-0..11 samples, single moves, invalid states, buffer sizes; how they establish correctness. -->
+- **Course micro-tests** (`tests/trubik.c` via `O2/rubik.elf`): depths 0–11 samples, solved, single moves, chains, invalid states, small `cap` → `-2`, C↔ASM length agreement — **52 passed**.
+- **d11 battery:** 2644 God’s-number-11 states; C then ASM; length agree; ASM wins every cycle comparison on rv32emu ([`results/d11_cmp_v5c5.txt`](rubik/results/d11_cmp_v5c5.txt)).
+- **Budgets:** instruction caps in `rubik.h`; data budget via `scripts/driver.py` / `size -A`.
+- **Ripes:** CLI `RV32_5S` on a tiny ELF that only calls `rubik_solve_asm` ([`results/ripes_5s/`](rubik/results/ripes_5s/)) — CPI/stall check, not a substitute for the 2644 mean.
 
 ## 1.5 Optimization
 
@@ -81,11 +119,21 @@ Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / 
 
 ## 1.6 RV32I improvements
 
-<!-- Cost of no M/F, no Ripes ecall/LED; how hand-written assembly recovers speed/size vs gcc. -->
+No `mul`/`div`/`rem` and no F: ranks and PDB indices are shifts and adds (`a << 10`, nibble extract). Homework 1’s Ripes ecall/LED path is gone; I/O is `out`/`cap` plus freestanding `write`/`exit` in the harness.
+
+What hand-written ASM recovers versus gcc `-O2`/`-O3` on this cube:
+
+- **Algorithm shape gcc will not invent:** sibling one-quarter apply (`from_off`), four-view waterfall with early prune, pack-while-scatter for σ/σ².
+- **Stable pins:** `MOVES`, `&sig`, `&mod3tab`, walk cursor in `a`/`s` regs — fewer `li`/`la` in the child hot path than a spilling C `search` loop.
+- **Pipeline-facing layout:** fall-through on the common `r ≠ 0` path; load-use fills in `apply_1q` and pos-build (Ripes CPI ~1.36 → ~1.28). rv32emu cannot see those stalls (`CPI ≡ 1`).
+
+C still wins on raw “compiler micro” tricks in places (nibble form was a wash when copied). The large gap is search structure + tables under a 128 KiB ceiling, not a missing M-extension multiply.
 
 ## 1.7 Real-world applications
 
-<!-- Where IDA* / pattern databases show up; how memory and instruction budgets map to embedded constraints. -->
+IDA* with pattern databases is the standard exact approach for small permutation groups (Pocket Cube, 15-puzzle variants, some logistics / assembly sequencing). The same trade appears in embedded and bare-metal settings: a **compact admissible table** plus iterative deepening beats storing all distances (here 3.67M states would blow the 128 KiB data budget and the instruction budget of a plain BFS).
+
+Memory and instruction caps in `rubik.h` mirror MCU constraints — fit code+tables in a fixed ROM/RAM envelope, and bound worst-case work (d11) so a solve cannot run unbounded on a soft core. RV32I-only forces the implementation to stay in shifts, loads, and branches; the interesting engineering is which symmetries and move factorizations buy prune power without growing the PDB past the envelope.
 
 ---
 
