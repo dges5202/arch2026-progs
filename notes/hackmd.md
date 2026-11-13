@@ -16,7 +16,7 @@ Style references: [2D line drawing (fixed-point)](https://hackmd.io/@sysprog/lin
 | Item | Value |
 | :--- | :--- |
 | Repository | https://github.com/dges5202/arch2026-progs |
-| Pinned commit | [`c98c5e0`](https://github.com/dges5202/arch2026-progs/tree/c98c5e0) |
+| Pinned commit | [`7451aad`](https://github.com/dges5202/arch2026-progs/tree/7451aad) |
 | Host | AMD Ryzen 7 9800X3D, Linux 6.6 (WSL2) |
 | Toolchain | `riscv64-unknown-elf-gcc` 16.1.0, `-march=rv32i_zicsr -mabi=ilp32` |
 | Emulator | [rv32emu](https://github.com/sysprog21/rv32emu) system emulation + `ELF_LOADER` |
@@ -145,7 +145,7 @@ Memory and instruction caps in `rubik.h` mirror MCU constraints — fit code+tab
 
 # 2. BFloat16 (`bf16`)
 
-Quiz 1 Problem B, graded in this fork: three leaves — [`bf16_from_f32`](https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/bf16/bf16.c) / [`bf16_mul`](https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/bf16/bf16.c) / [`bf16_sqrt`](https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/bf16/bf16.c) and the matching `*_asm` in [`bf16.S`](https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/bf16/bf16.S) — contract in [`bf16.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/bf16/bf16.h). Harness numbers below come from `scripts/driver.py --prog bf16` on this tree; a short log sits in [`notes/bf16/bench.md`](bf16/bench.md). The separate personal truncate/IEEE lab lives outside this repo at `homework/bf16` (add/sub/div and twins; not graded here).
+Quiz 1 Problem B, graded in this fork: three leaves — [`bf16_from_f32`](https://github.com/dges5202/arch2026-progs/blob/7451aad/src/bf16/bf16.c) / [`bf16_mul`](https://github.com/dges5202/arch2026-progs/blob/7451aad/src/bf16/bf16.c) / [`bf16_sqrt`](https://github.com/dges5202/arch2026-progs/blob/7451aad/src/bf16/bf16.c) and the matching `*_asm` in [`bf16.S`](https://github.com/dges5202/arch2026-progs/blob/7451aad/src/bf16/bf16.S) — contract in [`bf16.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/bf16/bf16.h). Harness numbers below come from `scripts/driver.py --prog bf16` on this tree; a short log sits in [`notes/bf16/bench.md`](bf16/bench.md). The separate personal truncate/IEEE lab lives outside this repo at `homework/bf16` (add/sub/div and twins; not graded here).
 
 ## 2.1 Principle of the code
 
@@ -244,7 +244,7 @@ BFloat16 is the default 16-bit format in many ML frameworks (TensorFlow, large-m
 
 # 3. Binary GCD (`gcd`)
 
-Quiz 2 Problem A (Stein / binary GCD), graded in this fork: [`gcd_u32`](https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/gcd/gcd.c) / [`gcd_u32_asm`](https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/gcd/gcd.S), contract [`gcd.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/gcd/gcd.h). Harness bench: [`notes/gcd/bench.md`](gcd/bench.md). Early playground opt history (pre-fork) remains linked by commit in §3.5.
+Quiz 2 Problem A (Stein / binary GCD), graded in this fork: [`gcd_u32`](https://github.com/dges5202/arch2026-progs/blob/7451aad/src/gcd/gcd.c) / [`gcd_u32_asm`](https://github.com/dges5202/arch2026-progs/blob/7451aad/src/gcd/gcd.S), contract [`gcd.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/gcd/gcd.h). Harness bench: [`notes/gcd/bench.md`](gcd/bench.md). Early playground opt history (pre-fork) remains linked by commit in §3.5.
 
 On the early playground ELF the timed window was `get_cycles; get_instret; <body>; …`. An empty probe was 21 cycles / 7 instret; **gcd-only retired** = `iret − 7` per Quiz pair. An optimization counts only if the six Quiz lines still match.
 
@@ -264,7 +264,7 @@ $$
 Order of application: (1) either side zero → return the other ($\gcd(0,0)=0$ here); (2) while both even, shift both and count shared twos; (3) strip leftover twos from each side alone; (4) while odd values differ, subtract the smaller from the larger and shift the even difference; (5) shift the odd gcd left by the shared count.
 
 ```c
-/* https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/gcd/gcd.c */
+/* https://github.com/dges5202/arch2026-progs/blob/7451aad/src/gcd/gcd.c */
 unsigned gcd(unsigned a, unsigned b)
 {
     unsigned count = 0;
@@ -345,7 +345,7 @@ Every row is gcd-only retired over the six pairs (CPI 1.00 on rv32emu). Full per
 **Shared twos: nibble then binary.** $v_2(0\text{xF0000000})=28$ makes a 1-bit peel linear in $k$. A 16/8/4/2/1 walk of $\mathrm{ctz}(a\lor b)$ cut −105, but hurt pair 5 ($k=1$). Kept layout: after parity, $(a\lor b)\land 0\text{xF}$ nonzero → 1-bit shortcut; zero → binary path with `t5`/`t6` loaded only there.
 
 ```asm
-/* https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/gcd/gcd.S */
+/* https://github.com/dges5202/arch2026-progs/blob/7451aad/src/gcd/gcd.S */
 even_loop:
     or      t1, a0, a1
     andi    t2, t1, 1
@@ -380,7 +380,7 @@ Binary GCD is used where a fast divider is missing or inputs are often even (GMP
 
 # 4. Bitwise adders and Q11.20 (`fixed`)
 
-Quiz 3 Problem C, graded in this fork: [`op1`/`op2`/`op3`/`q_mul`](https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/fixed/fixed.c) and [`*_asm`](https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/fixed/fixed.S), contract [`fixed.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/fixed/fixed.h). Bench: [`notes/fixed/bench.md`](fixed/bench.md). Gate-delay and sequential-circuit parts of the quiz are not programs and are not ported. Early playground opt commits remain linked in §4.5.
+Quiz 3 Problem C, graded in this fork: [`op1`/`op2`/`op3`/`q_mul`](https://github.com/dges5202/arch2026-progs/blob/7451aad/src/fixed/fixed.c) and [`*_asm`](https://github.com/dges5202/arch2026-progs/blob/7451aad/src/fixed/fixed.S), contract [`fixed.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/fixed/fixed.h). Bench: [`notes/fixed/bench.md`](fixed/bench.md). Gate-delay and sequential-circuit parts of the quiz are not programs and are not ported. Early playground opt commits remain linked in §4.5.
 
 ## 4.1 Principle of the code
 
@@ -395,7 +395,7 @@ Four routines. The first three rebuild addition-family ops from bitwise logic; t
 **`q_mul(a, b)`** multiplies two Q11.20 values: store $A$ means $A/2^{20}$. Form the 64-bit product, add $2^{19}$, arithmetic-shift right by 20 (ties toward $+\infty$), keep the low 32 bits (wrap, no saturation).
 
 ```c
-/* https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/fixed/fixed.c */
+/* https://github.com/dges5202/arch2026-progs/blob/7451aad/src/fixed/fixed.c */
 uint32_t op1(uint32_t a, uint32_t b, int *n)
 {
     uint32_t c;
@@ -452,7 +452,7 @@ Measured on rv32emu (`cycle` ≡ `instret`). Worst call over the grader’s 64×
 `op1` excerpt after the fall-through rewrite:
 
 ```asm
-/* https://github.com/dges5202/arch2026-progs/blob/c98c5e0/src/fixed/fixed.S */
+/* https://github.com/dges5202/arch2026-progs/blob/7451aad/src/fixed/fixed.S */
 op1_asm:
     li      t0, 0
     beqz    a1, op1_loop_skip
