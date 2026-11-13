@@ -125,8 +125,8 @@
 #        → apply_sw_loop; d11 mean −10% / 5ST cycles ~−10%
 #  v5c7  no_prev: source/twist via s6+27 / +24 (drop hot la pair)
 #        → no_prev; F-cluster layout ABI (from_off then source then twist)
-#  v5c8  inv_o LU: hoist addi t0 between &scratch[j] and lbu (fill)
-#        → loop_heuristic_core_inv_o
+#  v5c8  inv_o LU: addi after lbu i; slli o*2 in a6 fills s.o→sub
+#        → loop_heuristic_core_inv_o (a6 temp; t6 keeps arank a)
 #
 
     .data
@@ -960,24 +960,25 @@ loop_heuristic_core_o:
     lbu     t6, 0(t6)                              # a = arank[...]
 
     # fold inv.o[0..5]: o=(3-s.o[i])%3, i=scratch[j]
-    # v5c8: hoist addi t0 into add→lbu gap (same idea as v5c5 pos-build)
+    # v5c8 LU: addi fills lbu i→add; slli a6=o*2 fills lbu s.o→sub
+    #          (a6 scratch only; t6 must keep a for PDB_NIBBLE)
     li      t0, 0
     li      t1, 6
     li      t4, 0                                  # o fold = 0
     li      t5, 3                                  # for (3-x)%3
 loop_heuristic_core_inv_o:
     add     t2, s9, t0                             # &scratch[j]
-    addi    t0, t0, 1                              # v5c8 fill add→lbu
     lbu     t2, 0(t2)                              # i = scratch[j] = inv.p[j]
+    addi    t0, t0, 1                              # v5c8 fill lbu i→add
     add     t2, a4, t2
     lbu     t2, 0(t2)                              # s.o[i]
+    slli    a6, t4, 1                              # v5c8 fill s.o→sub (o*2)
     sub     t3, t5, t2                             # 3 - s.o[i]
 
     add     t3, a7, t3
     lbu     t3, 0(t3)                              # mod3tab[3 - s.o[i]]
 
-    slli    t2, t4, 1
-    add     t4, t4, t2                             # o*3
+    add     t4, t4, a6                             # o*3 (also fills mod3→use)
     add     t4, t4, t3                             # + inv.o[j]
     bne     t0, t1, loop_heuristic_core_inv_o
 
