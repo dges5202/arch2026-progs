@@ -2,6 +2,8 @@
 tags: computer-arch
 ---
 
+<!-- published: https://hackmd.io/@dges5202/arch2026-homework2 -->
+
 # Assignment 2: Complete Applications on Bare-Metal RV32I
 > contributed by [dges5202](https://github.com/dges5202)
 
@@ -14,6 +16,7 @@ Style references: [2D line drawing (fixed-point)](https://hackmd.io/@sysprog/lin
 | Item | Value |
 | :--- | :--- |
 | Repository | https://github.com/dges5202/arch2026-progs |
+| Pinned commit | [`6022980`](https://github.com/dges5202/arch2026-progs/tree/6022980) |
 | Host | AMD Ryzen 7 9800X3D, Linux 6.6 (WSL2) |
 | Toolchain | `riscv64-unknown-elf-gcc` 16.1.0, `-march=rv32i_zicsr -mabi=ilp32` |
 | Emulator | [rv32emu](https://github.com/sysprog21/rv32emu) system emulation + `ELF_LOADER` |
@@ -31,19 +34,19 @@ The solver is **iterative deepening A\*** (IDA*) over the Pocket Cube’s nine f
 
 The heuristic is an **admissible** pattern-database lookup on a packed `(a, o)` index (pos3ori): seven cubie positions contribute an even-permutation rank `a`, and six orientations (the seventh is determined) fold into `o < 729`. To tighten `h` without losing admissibility, the search takes
 
-\[
+$$
 h = \max\bigl(h(s),\; h(s^{-1}),\; h(\sigma(s)),\; h(\sigma^{2}(s))\bigr)
-\]
+$$
 
 and **waterfalls** the four views in order `s → inv → σ → σ²`, stopping as soon as a view exceeds `r`. ASM keeps an explicit stack (`states[]` / `path[]`) instead of recursion so the 4 KiB stack and RV32I register file stay under control. The contract API is `rubik_solve` / `rubik_solve_asm(state, out, cap)`: parse 14 characters, write a space-separated move string, return length or `-1`/`-2`.
 
 ## 1.2 Mathematical foundation
 
-**State space.** Model of `sysprog21/minirubik`: seven movable cubies, orientations in \(\{0,1,2\}\) with \(\sum o_i \equiv 0 \pmod 3\). Reachable size is
+**State space.** Model of `sysprog21/minirubik`: seven movable cubies, orientations in $\{0,1,2\}$ with $\sum o_i \equiv 0 \pmod{3}$. Reachable size is
 
-\[
+$$
 7! \times 3^{6} = 3{,}674{,}160.
-\]
+$$
 
 God’s number for this metric is **11**; there are **2644** states at distance 11 (the hard KPI layer).
 
@@ -61,13 +64,13 @@ God’s number for this metric is **11**; there are **2644** states at distance 
 
 **Speed (rv32emu).** Here `cycle` ≡ `instret` (CPI = 1), so the d11 **mean** is an instruction KPI:
 
-| | C `-O2` | C `-O3` | C `-O3 -flto` | ASM **v5c6** |
+| | C `-O2` | C `-O3` | C `-O3 -flto` | ASM **v5c7** |
 |--|--------:|--------:|--------------:|-------------:|
-| d11 mean (2644) | 1,742,455 | 1,329,330 | 1,348,452 | **597,951** |
-| vs ASM | **2.91×** | **2.22×** | **2.26×** | — |
-| harness 6-depth | 322,553 | 246,708 | — | **115,916** |
+| d11 mean (2644) | 1,742,455 | 1,329,330 | 1,348,452 | **594,058** |
+| vs ASM | **2.93×** | **2.24×** | **2.27×** |  |
+| harness 6-depth | 322,553 | 246,708 |  | **115,175** |
 
-Peak ASM d11 max ≈ 3.28M ≪ `RUBIK_INSN_BUDGET` (7.5M). `-O3` (inline `sym3` / `h_pos3ori`) cuts ~24% vs `-O2`; `-flto` adds little on this single-TU solver. ASM still ~**2.2×** the best C.
+Peak ASM d11 max ≈ 3.26M ≪ `RUBIK_INSN_BUDGET` (7.5M). `-O3` (inline `sym3` / `h_pos3ori`) cuts ~24% vs `-O2`; `-flto` adds little on this single-TU solver. ASM still ~**2.2×** the best C.
 
 **Pipeline (Ripes `RV32_5S`).** Same emu min/max d11 samples (not the 2644 mean). Detail: §1.5 and [`bench-v1.md`](rubik/bench-v1.md).
 
@@ -76,16 +79,16 @@ Peak ASM d11 max ≈ 3.28M ≪ `RUBIK_INSN_BUDGET` (7.5M). `-O3` (inline `sym3` 
 | C `-O2` | 840,081 | **1.235** | 11,935,062 | **1.235** | 0.37 / 0.35 |
 | C `-O3` | 577,365 | **1.112** | 8,194,170 | **1.111** | 0.54 / 0.51 |
 | C `-O3 -flto` | 574,256 | **1.113** | 8,152,521 | **1.112** | 0.54 / 0.51 |
-| ASM **v5c6** | **312,585** | 1.277 | **4,181,698** | 1.274 | — |
+| ASM **v5c7** | **311,058** | 1.279 | **4,160,143** | 1.276 |  |
 
 **Why C wins CPI but loses instructions / cycles.** CPI on 5ST is stall rate, not speed. GCC `-O3` inlines helpers and software-pipelines cubie loops (static load→use gap ≈4, gap=1 only ~18%); ASM hot path still has many adjacent `lbu`→use (gap=1 ~48%), so CPI ~1.27 vs C’s ~1.11–1.24. Instruction count is the other axis: C **never waterfalls** (every child pays all four views), keeps call/spill around `heuristic`, and uses subtract-`%3` instead of `mod3tab` — so instret stays ~2× ASM even when each C instruction bubbles less. Net: **lower CPI, higher cycles**. Artifacts: [`d11_cmp_cO3flto_vs_asm.txt`](rubik/results/d11_cmp_cO3flto_vs_asm.txt), [`ripes_5s/cO3flto_*.json`](rubik/results/ripes_5s/).
 
-**Footprint.** `RUBIK_DATA_BUDGET` = 128 KiB (`size -A`). ASM `impl_asm.o` **v5c6**: `.text` **2792** + data **108405** → **111,197** ok. C `-O2` impl ≈ **110,298**.
+**Footprint.** `RUBIK_DATA_BUDGET` = 128 KiB (`size -A`). ASM `impl_asm.o` **v5c7**: `.text` **2780** + data **108405** → **111,185** ok. C `-O2` impl ≈ **110,298**.
 
 ## 1.4 Verification
 
 - **Course micro-tests** (`tests/trubik.c` via `O2/rubik.elf`): depths 0–11 samples, solved, single moves, chains, invalid states, small `cap` → `-2`, C↔ASM length agreement — **52 passed**.
-- **d11 battery:** 2644 God’s-number-11 states; C then ASM; length agree; ASM wins every cycle comparison on rv32emu ([`results/d11_cmp_v5c6_swcopy.txt`](rubik/results/d11_cmp_v5c6_swcopy.txt)).
+- **d11 battery:** 2644 God’s-number-11 states; C then ASM; length agree; ASM wins every cycle comparison on rv32emu ([`results/d11_cmp_v5c7.txt`](rubik/results/d11_cmp_v5c7.txt)).
 - **Budgets:** instruction caps in `rubik.h`; data budget via `scripts/driver.py` / `size -A`.
 - **Ripes:** CLI `RV32_5S` on a tiny ELF that only calls `rubik_solve_asm` ([`results/ripes_5s/`](rubik/results/ripes_5s/)) — CPI/stall check, not a substitute for the 2644 mean.
 
@@ -93,39 +96,27 @@ Peak ASM d11 max ≈ 3.28M ≪ `RUBIK_INSN_BUDGET` (7.5M). `-O3` (inline `sym3` 
 
 Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = hardest God’s-number layer (**2644** states); full 3.67M C check is separate.
 
-| Ver | Change | d11 mean (ASM) | vs GCC `-O2` d11 | 5ST (Ripes) | Why |
-|-----|--------|---------------:|-----------------:|------------:|-----|
-| **v1** | IDA* + waterfall `s→inv→σ→σ²`; C-style apply; parse `sll` | **824,948** | **2.17× faster** (C mean 1,789,077) | min CPI **1.346** / max **1.344** | First correct ASM; beats `-O2` on all 2644 d11 states |
-| | | p50 757k / max 4.54M; harness 6-depth: ASM 162k vs C 331k (2.04×) | | | 5ST cycles min **442,606** / max **5,799,763** |
-| **v2** | Reorder `s→σ→σ²→inv`; `PDB_NIBBLE`; `r==0` gate | **909,588** | **1.97× faster** | *(bisect; not 5ST’d)* | **+10.3% vs v1** (regress); inv rebuilt after σ |
-| | | p50 828k / max 5.06M; harness ASM 174k (+6.9% vs v1) | | | Log [`d11_cmp_cO2_vs_asm_v2.txt`](rubik/results/d11_cmp_cO2_vs_asm_v2.txt) |
-| **v2−r0** | Same as v2 but drop `r==0` gate | **909,626** | 1.97× | — | ≈v2 → **not** the +10% |
-| **v2−macro** | Same order+`r0`; inline nibble (macro unused) | **909,588** | 1.97× | — | **≡ v2** → macro not the cost |
-| **v2b** | Restore `s→inv→σ→σ²`; reuse `h(s)` pos; keep `r0`+macro | **824,914** | **2.17× faster** | min CPI **1.349** / max **1.347** | **fixed**; ≈v1 emu; harness **156,924** |
-| | | p50 756k / max 4.55M; `.text` 3180 | | | 5ST cycles min **451,668** / max **6,125,417** |
-| **v3** | PDB stride 1024; idx=`(a<<10)+o` (C+ASM same table) | **801,047** | **2.18× faster** (C mean **1,742,455**) | min CPI **1.359** / max **1.357** | **−2.9% vs v2b** emu; 5ST cycles also best |
-| | | p50 735k / max 4.42M; budget ok | | | 5ST cycles min **441,957** / max **5,997,626** |
-| **v4a** | `turns==1` fast path: parent→`Q+16` one quarter | **801,022** | **2.18× faster** | *(not re-5ST’d; ≈v3)* | ≈v3 (noise); log only |
-| **v4b** | Sibling 1-quarter apply via `from_off` (always 1q) | **685,295** | **2.54× faster** | min CPI **1.359** / max **1.357** | **−14.5% vs v3** emu; big apply win |
-| | | harness ASM **131,708**; 5ST min **380,735** / max **5,121,231** | | | Log [`d11_cmp_v4b.txt`](rubik/results/d11_cmp_v4b.txt) |
-| **v5a** | Pin `a3=&sig`, walk `a4`; no per-PDB `li s1,9` | **681,242** | **2.56× faster** | min CPI **1.362** / max **1.359** | −0.59% vs v4b |
-| | | 5ST min **379,044** / max **5,099,017** | | | Log [`d11_cmp_v5a.txt`](rubik/results/d11_cmp_v5a.txt) |
-| **v5b** | σ/σ² pack-while-scatter (drop 7-scan) | **660,887** | **2.64× faster** | min CPI **1.344** / max **1.342** | **−3.0% vs v5a** |
-| | | 5ST min **362,214** / max **4,878,632** | | | Log [`d11_cmp_v5b.txt`](rubik/results/d11_cmp_v5b.txt) |
-| **v5c1** | Hot `%3` → `mod3tab` (`a7` pin) | **664,235** | **2.62× faster** | min CPI **1.312** / max **1.312** | emu **+0.51%** vs v5b; **5ST wins** |
-| | | 5ST min **355,179** / max **4,789,550**; `.text` **2788** | | | Log [`d11_cmp_v5c1.txt`](rubik/results/d11_cmp_v5c1.txt) |
-| **v5c2** | `r==0` cold: `beqz` → `r0_id_path`; `r≠0` fall into waterfall | **664,235** | **2.62× faster** | min CPI **1.309** / max **1.308** | emu ≡ v5c1; **5ST −0.3%** |
-| | | 5ST min **354,181** / max **4,775,204** | | | Log [`d11_cmp_v5c2.txt`](rubik/results/d11_cmp_v5c2.txt) |
-| **v5c3** | PDB nibble `slli; andi 4` (macro + root) | **664,235** | **2.62× faster** | min CPI **1.309** / max **1.308** | **≡ v5c2** (2→2 insn; LU gap unchanged) |
-| | | 5ST min **354,181** / max **4,775,204** | | | Log [`d11_cmp_v5c3.txt`](rubik/results/d11_cmp_v5c3.txt) |
-| **v5c4** | `apply_1q` load-use schedule (dest / `&twist` fills) | **664,235** | **2.62× faster** | min CPI **1.296** / max **1.294** | emu ≡; **5ST −1.0%** |
-| | | 5ST min **350,618** / max **4,724,909** | | | Log [`d11_cmp_v5c4.txt`](rubik/results/d11_cmp_v5c4.txt) |
-| **v5c5** | pos-build: `addi a4` between `lbu p` and use | **664,235** | **2.62× faster** | min CPI **1.283** / max **1.280** | emu ≡; **5ST −1.0%** vs v5c4 |
-| | | 5ST min **347,090** / max **4,674,656** | | | Log [`d11_cmp_v5c5.txt`](rubik/results/d11_cmp_v5c5.txt) |
-| **v5c6** | Sibling copy: 4×`lw`/`sw` (was 14×`lbu`/`sb` loop) | **597,951** | **2.91× faster** | min CPI **1.277** / max **1.274** | **−10.0%** emu; **5ST ~−10%** |
-| | | harness ASM **115,916**; 5ST min **312,585** / max **4,181,698**; `.text` **2792** | | | Log [`d11_cmp_v5c6_swcopy.txt`](rubik/results/d11_cmp_v5c6_swcopy.txt) |
+| Ver | Change | d11 mean | vs `-O2` | 5ST (CPI / cycles) | Notes |
+|-----|--------|--------:|---------:|-------------------:|-------|
+| **v1** | IDA* + waterfall `s→inv→σ→σ²`; C-style apply; parse `sll` | **824,948** (p50 757k / max 4.54M) | **2.17×** (C 1,789,077) | CPI **1.346** / **1.344**; cycles **442,606** / **5,799,763** | First correct ASM; harness 162k vs C 331k |
+| **v2** | Reorder `s→σ→σ²→inv`; `PDB_NIBBLE`; `r==0` gate | **909,588** (p50 828k / max 5.06M) | **1.97×** | *(bisect; not 5ST’d)* | **+10.3% vs v1** (regress); harness 174k |
+| **v2−r0** | Same as v2 but drop `r==0` gate | **909,626** | 1.97× | — | ≈v2 → not the +10% |
+| **v2−macro** | Same order+`r0`; inline nibble (macro unused) | **909,588** | 1.97× | — | ≡ v2 → macro not the cost |
+| **v2b** | Restore `s→inv→σ→σ²`; reuse `h(s)` pos; keep `r0`+macro | **824,914** (p50 756k / max 4.55M) | **2.17×** | CPI **1.349** / **1.347**; cycles **451,668** / **6,125,417** | Fixed; harness **156,924**; `.text` 3180 |
+| **v3** | PDB stride 1024; idx=`(a<<10)+o` (C+ASM same table) | **801,047** (p50 735k / max 4.42M) | **2.18×** (C **1,742,455**) | CPI **1.359** / **1.357**; cycles **441,957** / **5,997,626** | **−2.9% vs v2b** emu |
+| **v4a** | `turns==1` fast path: parent→`Q+16` one quarter | **801,022** | **2.18×** | *(not re-5ST’d; ≈v3)* | ≈v3 (noise) |
+| **v4b** | Sibling 1-quarter apply via `from_off` (always 1q) | **685,295** | **2.54×** | CPI **1.359** / **1.357**; cycles **380,735** / **5,121,231** | **−14.5% vs v3**; harness **131,708** |
+| **v5a** | Pin `a3=&sig`, walk `a4`; no per-PDB `li s1,9` | **681,242** | **2.56×** | CPI **1.362** / **1.359**; cycles **379,044** / **5,099,017** | −0.59% vs v4b |
+| **v5b** | σ/σ² pack-while-scatter (drop 7-scan) | **660,887** | **2.64×** | CPI **1.344** / **1.342**; cycles **362,214** / **4,878,632** | **−3.0% vs v5a** |
+| **v5c1** | Hot `%3` → `mod3tab` (`a7` pin) | **664,235** | **2.62×** | CPI **1.312** / **1.312**; cycles **355,179** / **4,789,550** | emu **+0.51%** vs v5b; 5ST wins; `.text` **2788** |
+| **v5c2** | `r==0` cold: `beqz` → `r0_id_path`; `r≠0` fall into waterfall | **664,235** | **2.62×** | CPI **1.309** / **1.308**; cycles **354,181** / **4,775,204** | emu ≡ v5c1; **5ST −0.3%** |
+| **v5c3** | PDB nibble `slli; andi 4` (macro + root) | **664,235** | **2.62×** | CPI **1.309** / **1.308**; cycles **354,181** / **4,775,204** | ≡ v5c2 (2→2 insn) |
+| **v5c4** | `apply_1q` load-use schedule (dest / `&twist` fills) | **664,235** | **2.62×** | CPI **1.296** / **1.294**; cycles **350,618** / **4,724,909** | emu ≡; **5ST −1.0%** |
+| **v5c5** | pos-build: `addi a4` between `lbu p` and use | **664,235** | **2.62×** | CPI **1.283** / **1.280**; cycles **347,090** / **4,674,656** | emu ≡; **5ST −1.0%** vs v5c4 |
+| **v5c6** | Sibling copy: 4×`lw`/`sw` (was 14×`lbu`/`sb` loop) | **597,951** | **2.91×** | CPI **1.277** / **1.274**; cycles **312,585** / **4,181,698** | **−10%** emu/5ST; harness **115,916**; `.text` **2792** |
+| **v5c7** | `no_prev`: `&source`/`&twist` via `s6+27` / `+24` (drop hot `la`) | **594,058** | **2.93×** | CPI **1.279** / **1.276**; cycles **311,058** / **4,160,143** | **−0.65%** vs v5c6; harness **115,175**; `.text` **2780** |
 
-Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`). v5c2 makes the common `r≠0` path fall through into the waterfall. v5c3 aligns nibble extract with GCC’s form; no cycle win alone. v5c4–v5c5 fill load-use slots in apply and pos-build. **v5c6** replaces the sibling byte-copy (~84 insn) with eight word moves — large because six of nine moves take the scratch path.
+Raw d11 compare dumps stay in the repo under `notes/rubik/results/` (not linked row-by-row). Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`). v5c2 makes the common `r≠0` path fall through into the waterfall. v5c3 aligns nibble extract with GCC’s form; no cycle win alone. v5c4–v5c5 fill load-use slots in apply and pos-build. **v5c6** replaces the sibling byte-copy (~84 insn) with eight word moves — large because six of nine moves take the scratch path. **v5c7** drops the per-child `la source`/`la twist` pair; F-cluster layout already places them at `s6+27` / `s6+51`.
 
 **Ripes 5ST method:** CLI `RV32_5S` on `rubik_solve_asm` only (tiny ELF), sample states from [`d11_ripes_sample_states.txt`](rubik/results/d11_ripes_sample_states.txt) (emu min/max). JSON + CSV: [`results/ripes_5s/`](rubik/results/ripes_5s/). Full 2644× not run (too slow in GUI/CLI). rv32emu still owns the **mean of 2644** KPI.
 
@@ -151,7 +142,7 @@ Memory and instruction caps in `rubik.h` mirror MCU constraints — fit code+tab
 
 # 2. BFloat16 (`bf16`)
 
-Quiz 1 Problem B, graded in this fork: three leaves — [`bf16_from_f32`](https://github.com/dges5202/arch2026-progs/blob/main/src/bf16/bf16.c) / [`bf16_mul`](https://github.com/dges5202/arch2026-progs/blob/main/src/bf16/bf16.c) / [`bf16_sqrt`](https://github.com/dges5202/arch2026-progs/blob/main/src/bf16/bf16.c) and the matching `*_asm` in [`bf16.S`](https://github.com/dges5202/arch2026-progs/blob/main/src/bf16/bf16.S) — contract in [`bf16.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/bf16/bf16.h). Harness numbers below come from `scripts/driver.py --prog bf16` on this tree; a short log sits in [`notes/bf16/bench.md`](bf16/bench.md). The separate personal truncate/IEEE lab lives outside this repo at `homework/bf16` (add/sub/div and twins; not graded here).
+Quiz 1 Problem B, graded in this fork: three leaves — [`bf16_from_f32`](https://github.com/dges5202/arch2026-progs/blob/6022980/src/bf16/bf16.c) / [`bf16_mul`](https://github.com/dges5202/arch2026-progs/blob/6022980/src/bf16/bf16.c) / [`bf16_sqrt`](https://github.com/dges5202/arch2026-progs/blob/6022980/src/bf16/bf16.c) and the matching `*_asm` in [`bf16.S`](https://github.com/dges5202/arch2026-progs/blob/6022980/src/bf16/bf16.S) — contract in [`bf16.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/bf16/bf16.h). Harness numbers below come from `scripts/driver.py --prog bf16` on this tree; a short log sits in [`notes/bf16/bench.md`](bf16/bench.md). The separate personal truncate/IEEE lab lives outside this repo at `homework/bf16` (add/sub/div and twins; not graded here).
 
 ## 2.1 Principle of the code
 
@@ -250,7 +241,7 @@ BFloat16 is the default 16-bit format in many ML frameworks (TensorFlow, large-m
 
 # 3. Binary GCD (`gcd`)
 
-Quiz 2 Problem A (Stein / binary GCD). Sources and the full optimization log: [`03-gcd/`](https://github.com/dges5202/2026-hw2-baremetal/tree/9780d53/03-gcd). Standalone draft that this section consolidates: [`03-gcd/notes/hackmd.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/9780d53/03-gcd/notes/hackmd.md). Bench detail: [`03-gcd/notes/bench.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/9780d53/03-gcd/notes/bench.md).
+Quiz 2 Problem A (Stein / binary GCD), graded in this fork: [`gcd_u32`](https://github.com/dges5202/arch2026-progs/blob/6022980/src/gcd/gcd.c) / [`gcd_u32_asm`](https://github.com/dges5202/arch2026-progs/blob/6022980/src/gcd/gcd.S), contract [`gcd.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/gcd/gcd.h). Harness bench: [`notes/gcd/bench.md`](gcd/bench.md). Early playground opt history (pre-fork) remains linked by commit in §3.5.
 
 On the early playground ELF the timed window was `get_cycles; get_instret; <body>; …`. An empty probe was 21 cycles / 7 instret; **gcd-only retired** = `iret − 7` per Quiz pair. An optimization counts only if the six Quiz lines still match.
 
@@ -270,7 +261,7 @@ $$
 Order of application: (1) either side zero → return the other ($\gcd(0,0)=0$ here); (2) while both even, shift both and count shared twos; (3) strip leftover twos from each side alone; (4) while odd values differ, subtract the smaller from the larger and shift the even difference; (5) shift the odd gcd left by the shared count.
 
 ```c
-/* https://github.com/dges5202/2026-hw2-baremetal/blob/9780d53/03-gcd/gcd.c#L12-L40 */
+/* https://github.com/dges5202/arch2026-progs/blob/6022980/src/gcd/gcd.c */
 unsigned gcd(unsigned a, unsigned b)
 {
     unsigned count = 0;
@@ -327,11 +318,11 @@ CSR baseline [`958ff64`](https://github.com/dges5202/2026-hw2-baremetal/commit/9
 
 ## 3.5 Optimization
 
-Every row is gcd-only retired over the six pairs (CPI 1.00 on rv32emu). Full per-pair windows: [`bench.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/9780d53/03-gcd/notes/bench.md).
+Every row is gcd-only retired over the six pairs (CPI 1.00 on rv32emu). Full per-pair windows: [`notes/gcd/bench.md`](gcd/bench.md). Early playground commits stay linked below.
 
 | Commit | Change | Retired | `.text` | `gcd` B | Δ |
 | :--- | :--- | ---: | ---: | ---: | ---: |
-| [`958ff64`](https://github.com/dges5202/2026-hw2-baremetal/commit/958ff64) | CSR baseline | 652 | 792 | 124 | — |
+| [`958ff64`](https://github.com/dges5202/2026-hw2-baremetal/commit/958ff64) | CSR baseline | 652 | 792 | 124 |  |
 | [`e7c4534`](https://github.com/dges5202/2026-hw2-baremetal/commit/e7c4534) | `even_loop` bottom-tested | 613 | 800 | 132 | −39 |
 | [`2b46ee8`](https://github.com/dges5202/2026-hw2-baremetal/commit/2b46ee8) | `strip_*` bottom-tested | 593 | 808 | 140 | −20 |
 | [`d489786`](https://github.com/dges5202/2026-hw2-baremetal/commit/d489786) | `a>b` falls into `gcd_loop` (**kept**) | 578 | 812 | 144 | −15 |
@@ -351,7 +342,7 @@ Every row is gcd-only retired over the six pairs (CPI 1.00 on rv32emu). Full per
 **Shared twos: nibble then binary.** $v_2(0\text{xF0000000})=28$ makes a 1-bit peel linear in $k$. A 16/8/4/2/1 walk of $\mathrm{ctz}(a\lor b)$ cut −105, but hurt pair 5 ($k=1$). Kept layout: after parity, $(a\lor b)\land 0\text{xF}$ nonzero → 1-bit shortcut; zero → binary path with `t5`/`t6` loaded only there.
 
 ```asm
-/* https://github.com/dges5202/2026-hw2-baremetal/blob/9780d53/03-gcd/gcd.S#L225-L264 */
+/* https://github.com/dges5202/arch2026-progs/blob/6022980/src/gcd/gcd.S */
 even_loop:
     or      t1, a0, a1
     andi    t2, t1, 1
@@ -386,9 +377,7 @@ Binary GCD is used where a fast divider is missing or inputs are often even (GMP
 
 # 4. Bitwise adders and Q11.20 (`fixed`)
 
-Quiz 3 Problem C, ported as `src/fixed/` in the harness. Contract: [`fixed.h`](https://github.com/dges5202/2026-hw2-baremetal/blob/2b3c782/04-logic/fixed.h). Working copies and the commit log live under [`04-logic/`](https://github.com/dges5202/2026-hw2-baremetal/tree/2b3c782/04-logic) until they are synced into an `arch2026-progs` fork. Gate-delay and sequential-circuit parts of the quiz are not programs and are not ported.
-
-Pinned assembly at the end of the `op1`–`op3` tightening sequence: [`fixed.S@2b3c782`](https://github.com/dges5202/2026-hw2-baremetal/blob/2b3c782/04-logic/fixed.S). Bench log: [`notes/bench.md`](https://github.com/dges5202/2026-hw2-baremetal/blob/2b3c782/04-logic/notes/bench.md).
+Quiz 3 Problem C, graded in this fork: [`op1`/`op2`/`op3`/`q_mul`](https://github.com/dges5202/arch2026-progs/blob/6022980/src/fixed/fixed.c) and [`*_asm`](https://github.com/dges5202/arch2026-progs/blob/6022980/src/fixed/fixed.S), contract [`fixed.h`](https://github.com/sysprog21/arch2026-progs/blob/main/src/fixed/fixed.h). Bench: [`notes/fixed/bench.md`](fixed/bench.md). Gate-delay and sequential-circuit parts of the quiz are not programs and are not ported. Early playground opt commits remain linked in §4.5.
 
 ## 4.1 Principle of the code
 
@@ -403,7 +392,7 @@ Four routines. The first three rebuild addition-family ops from bitwise logic; t
 **`q_mul(a, b)`** multiplies two Q11.20 values: store $A$ means $A/2^{20}$. Form the 64-bit product, add $2^{19}$, arithmetic-shift right by 20 (ties toward $+\infty$), keep the low 32 bits (wrap, no saturation).
 
 ```c
-/* https://github.com/dges5202/2026-hw2-baremetal/blob/2b3c782/04-logic/fixed.c */
+/* https://github.com/dges5202/arch2026-progs/blob/6022980/src/fixed/fixed.c */
 uint32_t op1(uint32_t a, uint32_t b, int *n)
 {
     uint32_t c;
@@ -460,7 +449,7 @@ Measured on rv32emu (`cycle` ≡ `instret`). Worst call over the grader’s 64×
 `op1` excerpt after the fall-through rewrite:
 
 ```asm
-/* https://github.com/dges5202/2026-hw2-baremetal/blob/2b3c782/04-logic/fixed.S */
+/* https://github.com/dges5202/arch2026-progs/blob/6022980/src/fixed/fixed.S */
 op1_asm:
     li      t0, 0
     beqz    a1, op1_loop_skip

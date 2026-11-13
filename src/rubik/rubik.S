@@ -18,6 +18,7 @@
 #    Q+i = p[i],  Q+7+i = o[i],  Q+16 = states[g+1]
 #    P+0 = path[g],  P+11 = next[g],  P+23 = pface[g]  (write pface[g+1] @ P+24)
 #    F+m = face_of[m],  F+9+m = turns_of[m],  F+18+m = from_off[m]  (0 or 16)
+#    F+27 = source[0][0],  F+51 = twist[0][0]  (face rows ×8; no_prev uses these)
 #    D = A + 512 = &rubik_pdb     S = &scratch (inv/σ only)
 #
 #  +-----+----------------------+--------------------------------------------+
@@ -122,6 +123,8 @@
 #        → loop_heuristic_core_p
 #  v5c6  sibling scratch→Q+16: 4×lw/4×sw (was 14×lbu/sb loop)
 #        → apply_sw_loop; d11 mean −10% / 5ST cycles ~−10%
+#  v5c7  no_prev: source/twist via s6+27 / +24 (drop hot la pair)
+#        → no_prev; F-cluster layout ABI (from_off then source then twist)
 #
 
     .data
@@ -808,12 +811,12 @@ child:
     #     (c) ≡ C apply(parent,m) in face order; do NOT also use turns_of
     #     (d) v5c1: ori via mod3tab[a7]; v5c4: LU fills in apply_1q
     #     (e) v5c6: sibling copy = 4×lw/4×sw (16B slot; live bytes 0..13)
+    #     (f) v5c7: &source/&twist = s6+27 / (source[face]+24); no hot la
 no_prev:
-    la      t4, source
     slli    t1, a5, 3                              # face * 8
-    add     t4, t4, t1                             # t4 = &source[face][0]
-    la      t5, twist
-    add     t5, t5, t1                             # t5 = &twist[face][0]
+    addi    t4, s6, 27                             # &source[0] (F+27)
+    add     t4, t4, t1                             # &source[face]
+    addi    t5, t4, 24                             # &twist[face] (= F+51+face*8)
 
     lbu     t0, 18(t3)                             # t0 = from_off[m]
     add     a6, s4, t0
