@@ -32,6 +32,7 @@ SECTIONS
     }
 
     .data : {
+        . = ALIGN(4);
         *(.data .data.*)
         *(.sdata .sdata.*)
     }

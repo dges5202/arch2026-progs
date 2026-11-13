@@ -131,11 +131,15 @@
 #        → loop_heuristic_core_sym_p_build / sym2_p_build
 #  v5c10 σ/σ² o_build: a6=&sig[i]; overlap kk/sig loads (y.o@7, z.o@21)
 #        → loop_heuristic_core_sym_o_build / sym2_o_build
+#  v5c11 .balign 16 on states/scratch (apply_sw_loop lw/sw; strict RV32I)
+#        → .data; linker .data also ALIGN(4)
 #
 
     .data
     # Order: states → scratch → P → F → source/twist/sig/kk/mod3tab → move_names
+    # states/scratch must be word-aligned: apply_sw_loop uses lw/sw on 16B slots
 
+    .balign 16
     states: .zero 192                              # 12*16; Q=&states[g]; p@0..6 o@7..13
     scratch:.zero 32                               # inv; σ: y@0..13; σ²: z@14..27
 
