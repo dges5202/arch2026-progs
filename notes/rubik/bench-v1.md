@@ -52,7 +52,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | ASM `impl_asm.o` **v4a** | **2980** | **108398** | **111,378** ok |
 | ASM `impl_asm.o` **v4b** | **2876** | **108398** | **111,274** ok |
 | ASM `impl_asm.o` **v5b** | 2808 | 108398 | 111,206 ok |
-| ASM `impl_asm.o` **v5c1** | **2788** | **108405** | **111,193** ok |
+| ASM `impl_asm.o` **v5c6** | **2792** | **108405** | **111,197** ok |
 
 ## Version table
 
@@ -71,6 +71,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v5c3** | PDB nibble `slli; andi 4` (hot macro + root) | **664,235** | **≡ v5c2** (wash) |
 | **v5c4** | `apply_1q` LU schedule (dest / `&twist` fills) | **664,235** | emu ≡; 5ST **−1.0%** |
 | **v5c5** | pos-build: bump `a4` between `lbu p` and use | **664,235** | emu ≡; 5ST **−1.0%** vs v5c4 |
+| **v5c6** | Sibling copy 4×`lw`/`sw` (was byte loop) | **597,951** | **−10.0% vs v5c5**; **2.91×** vs C |
 
 ## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
 
@@ -102,10 +103,12 @@ v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
 | **v5c3** | max | 4,775,204 | 3,651,025 | 1.308 | 0.765 |
 | **v5c4** | min | 350,618 | 270,619 | 1.296 | 0.772 |
 | **v5c4** | max | 4,724,909 | 3,651,025 | 1.294 | 0.773 |
-| **v5c5** | min | **347,090** | 270,619 | **1.283** | 0.780 |
-| **v5c5** | max | **4,674,656** | 3,651,025 | **1.280** | 0.781 |
+| **v5c5** | min | 347,090 | 270,619 | 1.283 | 0.780 |
+| **v5c5** | max | 4,674,656 | 3,651,025 | 1.280 | 0.781 |
+| **v5c6** | min | **312,585** | 244,824 | **1.277** | 0.783 |
+| **v5c6** | max | **4,181,698** | 3,282,503 | **1.274** | 0.785 |
 
-Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu. Remaining o/inv/σ folds already had gaps — stop LU here. Judge CPI on Ripes.
+Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu; **v5c6** word sibling copy **−10%** emu and 5ST (six of nine moves hit scratch→`Q+16`). Judge CPI on Ripes.
 
 ## Semantics reminder
 
@@ -120,26 +123,57 @@ Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/lay
 - **v5c3**: nibble extract `slli t4,idx,2; andi t4,t4,4` in `PDB_NIBBLE` and root heuristic (≡ old `andi 1; slli 2`).
 - **v5c4**: `apply_1q` — `add dest` fills from→use; `add &twist` fills p→sb; twist `lbu` fills o→add.
 - **v5c5**: `loop_heuristic_core_p` — `addi a4` between `lbu p` and `add` (LU fill).
+- **v5c6**: `apply_sw_loop` — 4×`lw`/4×`sw` scratch→`Q+16` (was 14× byte loop ≈84 insn).
 
-## GCC disasm tips / why C loses (checklist)
+## GCC vs ASM — CPI vs instruction count
 
-Disasm: `objdump -d -M no-aliases build/rubik/O2/impl.o` (helpers `h_pos3ori`, `sym3`, `heuristic`, `rubik_solve`).
+Disasm: `objdump -d -M no-aliases build/rubik/O{2,3}/impl.o`.
+
+### Same samples on Ripes `RV32_5S` (min `7534…` / max `1432…`)
+
+| | min cycles | CPI | max cycles | CPI |
+|--|----------:|----:|----------:|----:|
+| C `-O2` | 840,081 | 1.235 | 11,935,062 | 1.235 |
+| C `-O3` | 577,365 | **1.112** | 8,194,170 | **1.111** |
+| C `-O3 -flto` | 574,256 | 1.113 | 8,152,521 | 1.112 |
+| ASM **v5c6** | **312,585** | 1.277 | **4,181,698** | 1.274 |
+
+`-flto` ≈ plain `-O3` here (single `rubik.c` TU). JSON: `results/ripes_5s/cO3flto_{min,max}.json`.
+
+### Why C’s CPI looks better
+
+| | C `-O3` | ASM v5c5 |
+|--|--------:|---------:|
+| stall / instret (min sample) | **~0.11** | **~0.28** (v5c5; v5c6 similar) |
+| static load→use gap (mean) | ~4.1 | ~2.5 |
+| share of loads used next insn | ~18% | ~48% |
+
+`-O3` inlines `h_pos3ori` / `sym3` into `heuristic` (`.text` 2108 → 3412) and software-pipelines cubie loops (`lbu` burst, independent `addi`/`sb` in between). That fills 5ST load-use slots. ASM is a dense flat hot path: more adjacent `lbu`→use and taken loop backs → higher CPI even after v5c LU fills.
+
+### Why C still retires far more instructions
+
+| Factor | Effect on C instret |
+|--------|---------------------|
+| **No waterfall** | Every child evaluates **all four** views; ASM often prunes after `h(s)` (~53%) |
+| **Call / spill** | `-O2` keeps helpers + frames; `-O3` inlines views but `jal heuristic` / spills remain |
+| **`%3`** | subtract loops; ASM uses `mod3tab` |
+| **No sibling apply** | full parent apply semantics vs ASM `from_off` 1q |
+
+So: **CPI = quality of the average instruction in the pipe**; **instret = how many you must run**. C wins the first, loses the second by enough that **cycles still favor ASM** (~1.85× vs `-O3` on 5ST min; ~**2.2×** on emu d11 mean with **v5c6**).
+
+### Emu / harness (CPI ≡ 1)
+
+| | C `-O2` | C `-O3` | ASM **v5c6** |
+|--|--------:|--------:|-------------:|
+| d11 mean | 1,742,455 | 1,329,330 | **597,951** |
+| harness 6 | 322,553 | 246,708 | **115,916** |
 
 | Tip | Note |
 |-----|------|
-| Nibble shift | GCC: `slli x,idx,2; andi x,x,4` ≡ `(idx&1)<<2` (same 2 insns as `andi 1; slli 2`). Applied in **v5c3**; emu/5ST ≡. |
-| `%3` | GCC uses `bgeu`/`addi -3`/`bltu` subtract loop — **no table**. `mod3tab` is our v5.4 idea for 5ST CPI, not copied from GCC. |
-| Calls | `-O2`: `h_pos3ori` / `sym3` stay separate (`jalr`). `-O3`: both **inlined into `heuristic`**; `.text` 2108 → 3412. |
-| Search | C `search()` is already an **explicit loop** (not recursion). Cost is still stack frame + spills around `heuristic` / helpers, and **no waterfall** (every child pays all four views). |
-
-Harness (6 cases, rv32emu):
-
-| C opt | C cycles | ASM (same ELF) | C/ASM |
-|------:|---------:|---------------:|------:|
-| `-O2` | 322,553 | 130,979 | 2.46× |
-| `-O3` | **246,708** (−23.5% vs O2) | 130,962 | **1.88×** |
-
-d11 mean (2644): C `-O2` 1,742,455 → C `-O3` **1,329,330** (−23.7%); ASM v5a **681,242** still **1.95×** vs O3. So inlining helps C a lot, but waterfall + pinned regs + sibling apply remain the larger gap.
+| Nibble shift | GCC: `slli; andi 4` ≡ `(idx&1)<<2`. Copied in **v5c3**; wash. |
+| `%3` | GCC subtract loop; `mod3tab` is ours (v5c1). |
+| Calls | `-O2` separate helpers; `-O3` inline into `heuristic`. |
+| Search | C explicit loop, **no** waterfall short-circuit. |
 
 
 

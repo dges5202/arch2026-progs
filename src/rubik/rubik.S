@@ -120,6 +120,8 @@
 #        → apply_1q body
 #  v5c5  pos-build LU: addi a4 between lbu p and add
 #        → loop_heuristic_core_p
+#  v5c6  sibling scratch→Q+16: 4×lw/4×sw (was 14×lbu/sb loop)
+#        → apply_sw_loop; d11 mean −10% / 5ST cycles ~−10%
 #
 
     .data
@@ -669,6 +671,46 @@ heuristic_skip3:
     #  | t0-6| temps            | apply / h_pos3ori / prune                |
     #  +-----+------------------+------------------------------------------+
 
+    #  HOT LOOP CFG (one bound; fall-through = common)
+    #
+    #                    ┌── bound_failed → ++bound → loop_solve
+    #                    │
+    #   same_face ──┐    │
+    #               ▼    │
+    #             pop ───┴── g>0: g++/r++/Q/P rewind ──┐
+    #                                                   │ fall
+    #                                                   ▼
+    #                                             search_top
+    #                                          load m=next[g], pf
+    #                                           m==MOVES? ──yes──► pop
+    #                                               │ no
+    #                                               ▼
+    #                                             child
+    #                                      next[g]=m+1; face?
+    #                               same face? ──yes──► same_face
+    #                                       │ no
+    #                                       ▼
+    #                                    apply_1q
+    #                                       │
+    #                                       ▼
+    #                                 heuristic_core
+    #                            r==0? ──yes──► r0_id_path
+    #                              │ no              │
+    #                              ▼                 ├─ id → found
+    #                         waterfall              └─ else → search_top
+    #                         h>r? → search_top
+    #                              │ all h≤r
+    #                              ▼
+    #                            PUSH (g++/r--/Q/P)
+    #                              │
+    #                              ▼
+    #                          solve_loop (id?)
+    #                         yes → found
+    #                         no  → child   ◄── deepen at m=0 (a1=0)
+    #
+    #  Edges that skip search_top on purpose:
+    #    push → child | same_face (m+3≠MOVES) → child
+
 ida_start:
     # 4. IDA* outer: bound = h(root) .. MAX_DEPTH; each bound → DFS (step 5)
     #    v5a: s1=MOVES for whole search; a3=&sig pinned
@@ -765,6 +807,7 @@ child:
     #     (b) R2/R':  off=16 → sibling Q+16 → scratch → copy to Q+16
     #     (c) ≡ C apply(parent,m) in face order; do NOT also use turns_of
     #     (d) v5c1: ori via mod3tab[a7]; v5c4: LU fills in apply_1q
+    #     (e) v5c6: sibling copy = 4×lw/4×sw (16B slot; live bytes 0..13)
 no_prev:
     la      t4, source
     slli    t1, a5, 3                              # face * 8
@@ -812,14 +855,19 @@ apply_1q:
     addi    t1, s4, 16
     beq     a0, t1, heuristic_core
 
-    li      t0, 14
+
 apply_sw_loop:
-    addi    t0, t0, -1
-    add     t2, a0, t0
-    lbu     t2, 0(t2)
-    add     t3, t1, t0
-    sb      t2, 0(t3)
-    bnez    t0, apply_sw_loop
+    # v5c6: sibling copy scratch → Q+16 as words (aligned 16B slots)
+    #   was: 14× (addi/add/lbu/add/sb/bnez) ≈ 84 insn; now 8 insn
+    #   a0 = &scratch; t1 = Q+16; bytes 14..15 are slot pad (ok to copy)
+    lw      t2,  0(a0)
+    lw      t3,  4(a0)
+    lw      t4,  8(a0)
+    lw      t5, 12(a0)
+    sw      t2,  0(t1)
+    sw      t3,  4(t1)
+    sw      t4,  8(t1)
+    sw      t5, 12(t1)
     mv      a6, t1
 
 heuristic_core:

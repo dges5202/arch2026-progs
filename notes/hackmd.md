@@ -61,21 +61,31 @@ God’s number for this metric is **11**; there are **2644** states at distance 
 
 **Speed (rv32emu).** Here `cycle` ≡ `instret` (CPI = 1), so the d11 **mean** is an instruction KPI:
 
-| | C `-O2` (v3 tables) | ASM **v5c5** | ratio |
-|--|--------------------:|-------------:|------:|
-| d11 mean (2644) | 1,742,455 | **664,235** | **2.62×** |
-| harness 6-depth | 322,553 | **127,851** | **2.52×** |
+| | C `-O2` | C `-O3` | C `-O3 -flto` | ASM **v5c6** |
+|--|--------:|--------:|--------------:|-------------:|
+| d11 mean (2644) | 1,742,455 | 1,329,330 | 1,348,452 | **597,951** |
+| vs ASM | **2.91×** | **2.22×** | **2.26×** | — |
+| harness 6-depth | 322,553 | 246,708 | — | **115,916** |
 
-Peak ASM d11 max ≈ 3.65M ≪ `RUBIK_INSN_BUDGET` (7.5M). C `-O3` still trails ASM (~1.95× on an earlier v5a cut) — inlining helps C, but waterfall + sibling apply + pinned regs dominate.
+Peak ASM d11 max ≈ 3.28M ≪ `RUBIK_INSN_BUDGET` (7.5M). `-O3` (inline `sym3` / `h_pos3ori`) cuts ~24% vs `-O2`; `-flto` adds little on this single-TU solver. ASM still ~**2.2×** the best C.
 
-**Pipeline (Ripes `RV32_5S`).** Sampled emu min/max d11 states (not the 2644 mean). Final ASM: min **347,090** cycles (CPI **1.283**), max **4,674,656** (CPI **1.280**). Detail: §1.5 and [`bench-v1.md`](rubik/bench-v1.md).
+**Pipeline (Ripes `RV32_5S`).** Same emu min/max d11 samples (not the 2644 mean). Detail: §1.5 and [`bench-v1.md`](rubik/bench-v1.md).
 
-**Footprint.** `RUBIK_DATA_BUDGET` = 128 KiB (`size -A`). ASM `impl_asm.o` **v5c5**: `.text` **2788** + data **108405** → **111,193** ok. C `-O2` impl ≈ **110,298**.
+| | min cycles | CPI | max cycles | CPI | ASM cycles / C |
+|--|----------:|----:|----------:|----:|---------------:|
+| C `-O2` | 840,081 | **1.235** | 11,935,062 | **1.235** | 0.37 / 0.35 |
+| C `-O3` | 577,365 | **1.112** | 8,194,170 | **1.111** | 0.54 / 0.51 |
+| C `-O3 -flto` | 574,256 | **1.113** | 8,152,521 | **1.112** | 0.54 / 0.51 |
+| ASM **v5c6** | **312,585** | 1.277 | **4,181,698** | 1.274 | — |
+
+**Why C wins CPI but loses instructions / cycles.** CPI on 5ST is stall rate, not speed. GCC `-O3` inlines helpers and software-pipelines cubie loops (static load→use gap ≈4, gap=1 only ~18%); ASM hot path still has many adjacent `lbu`→use (gap=1 ~48%), so CPI ~1.27 vs C’s ~1.11–1.24. Instruction count is the other axis: C **never waterfalls** (every child pays all four views), keeps call/spill around `heuristic`, and uses subtract-`%3` instead of `mod3tab` — so instret stays ~2× ASM even when each C instruction bubbles less. Net: **lower CPI, higher cycles**. Artifacts: [`d11_cmp_cO3flto_vs_asm.txt`](rubik/results/d11_cmp_cO3flto_vs_asm.txt), [`ripes_5s/cO3flto_*.json`](rubik/results/ripes_5s/).
+
+**Footprint.** `RUBIK_DATA_BUDGET` = 128 KiB (`size -A`). ASM `impl_asm.o` **v5c6**: `.text` **2792** + data **108405** → **111,197** ok. C `-O2` impl ≈ **110,298**.
 
 ## 1.4 Verification
 
 - **Course micro-tests** (`tests/trubik.c` via `O2/rubik.elf`): depths 0–11 samples, solved, single moves, chains, invalid states, small `cap` → `-2`, C↔ASM length agreement — **52 passed**.
-- **d11 battery:** 2644 God’s-number-11 states; C then ASM; length agree; ASM wins every cycle comparison on rv32emu ([`results/d11_cmp_v5c5.txt`](rubik/results/d11_cmp_v5c5.txt)).
+- **d11 battery:** 2644 God’s-number-11 states; C then ASM; length agree; ASM wins every cycle comparison on rv32emu ([`results/d11_cmp_v5c6_swcopy.txt`](rubik/results/d11_cmp_v5c6_swcopy.txt)).
 - **Budgets:** instruction caps in `rubik.h`; data budget via `scripts/driver.py` / `size -A`.
 - **Ripes:** CLI `RV32_5S` on a tiny ELF that only calls `rubik_solve_asm` ([`results/ripes_5s/`](rubik/results/ripes_5s/)) — CPI/stall check, not a substitute for the 2644 mean.
 
@@ -112,8 +122,10 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 | | | 5ST min **350,618** / max **4,724,909** | | | Log [`d11_cmp_v5c4.txt`](rubik/results/d11_cmp_v5c4.txt) |
 | **v5c5** | pos-build: `addi a4` between `lbu p` and use | **664,235** | **2.62× faster** | min CPI **1.283** / max **1.280** | emu ≡; **5ST −1.0%** vs v5c4 |
 | | | 5ST min **347,090** / max **4,674,656** | | | Log [`d11_cmp_v5c5.txt`](rubik/results/d11_cmp_v5c5.txt) |
+| **v5c6** | Sibling copy: 4×`lw`/`sw` (was 14×`lbu`/`sb` loop) | **597,951** | **2.91× faster** | min CPI **1.277** / max **1.274** | **−10.0%** emu; **5ST ~−10%** |
+| | | harness ASM **115,916**; 5ST min **312,585** / max **4,181,698**; `.text` **2792** | | | Log [`d11_cmp_v5c6_swcopy.txt`](rubik/results/d11_cmp_v5c6_swcopy.txt) |
 
-Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`). v5c2 makes the common `r≠0` path fall through into the waterfall. v5c3 aligns nibble extract with GCC’s form; no cycle win alone. v5c4–v5c5 fill load-use slots in apply and pos-build; remaining folds already had gaps — LU layer stops here.
+Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`). v5c2 makes the common `r≠0` path fall through into the waterfall. v5c3 aligns nibble extract with GCC’s form; no cycle win alone. v5c4–v5c5 fill load-use slots in apply and pos-build. **v5c6** replaces the sibling byte-copy (~84 insn) with eight word moves — large because six of nine moves take the scratch path.
 
 **Ripes 5ST method:** CLI `RV32_5S` on `rubik_solve_asm` only (tiny ELF), sample states from [`d11_ripes_sample_states.txt`](rubik/results/d11_ripes_sample_states.txt) (emu min/max). JSON + CSV: [`results/ripes_5s/`](rubik/results/ripes_5s/). Full 2644× not run (too slow in GUI/CLI). rv32emu still owns the **mean of 2644** KPI.
 
@@ -125,7 +137,7 @@ What hand-written ASM recovers versus gcc `-O2`/`-O3` on this cube:
 
 - **Algorithm shape gcc will not invent:** sibling one-quarter apply (`from_off`), four-view waterfall with early prune, pack-while-scatter for σ/σ².
 - **Stable pins:** `MOVES`, `&sig`, `&mod3tab`, walk cursor in `a`/`s` regs — fewer `li`/`la` in the child hot path than a spilling C `search` loop.
-- **Pipeline-facing layout:** fall-through on the common `r ≠ 0` path; load-use fills in `apply_1q` and pos-build (Ripes CPI ~1.36 → ~1.28). rv32emu cannot see those stalls (`CPI ≡ 1`).
+- **Pipeline-facing layout:** fall-through on the common `r ≠ 0` path; load-use fills in `apply_1q` and pos-build; word sibling copy (Ripes CPI ~1.36 → ~1.27). rv32emu cannot see those stalls (`CPI ≡ 1`).
 
 C still wins on raw “compiler micro” tricks in places (nibble form was a wash when copied). The large gap is search structure + tables under a 128 KiB ceiling, not a missing M-extension multiply.
 
