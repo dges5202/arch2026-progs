@@ -129,6 +129,8 @@
 #        → loop_heuristic_core_inv_o (a6 temp; t6 keeps arank a)
 #  v5c9  σ/σ² p_build: interleave &sig[i] in a0 (fill p→use + value→bnez)
 #        → loop_heuristic_core_sym_p_build / sym2_p_build
+#  v5c10 σ/σ² o_build: a6=&sig[i]; overlap kk/sig loads (y.o@7, z.o@21)
+#        → loop_heuristic_core_sym_o_build / sym2_o_build
 #
 
     .data
@@ -1034,26 +1036,26 @@ loop_heuristic_core_sym_p_build_skip3:
 
 
     # build y.o[...]; a2 pack live; v5c1 %3 via mod3tab (a7)
+    # v5c10: a6=&sig[i]; kk[i]/sig[i] overlap; store y.o @ +7
     li      t0, 0
     li      t1, 7
 
 loop_heuristic_core_sym_o_build:
     lbu     t2, 0(a4)                              # o[i]
-    addi    t3, t2, 3
-    add     t2, a3, t0
-    lbu     t2, 7(t2)                              # kk[i]
-    add     t4, t2, t3                             # o[i]+3+kk[i]
+    add     a6, a3, t0                             # &sig[i] (v5c10)
+    lbu     a0, 7(a6)                              # kk[i]
+    addi    t3, t2, 3                              # fill kk→use
     lbu     t2, -7(a4)                             # p[i]
+    add     t4, a0, t3                             # o[i]+3+kk[i]
     add     t3, t2, a3
     lbu     t3, 7(t3)                              # kk[p[i]]
+    lbu     a0, 0(a6)                              # sig[i] (fill kk[p]→sub)
     sub     t4, t4, t3                             # o[i]+3+kk[i]-kk[p[i]]
 
     add     t4, a7, t4
-    lbu     t4, 0(t4)                              # mod3tab[o[i]+3+kk[i]-kk[p[i]]]
+    lbu     t4, 0(t4)                              # mod3tab[...]
 
-    add     t2, t0, a3
-    lbu     t3, 0(t2)                              # sig[i]
-    add     t2, t3, s9
+    add     t2, a0, s9
     sb      t4, 7(t2)                              # y.o[sig[i]]
 
     addi    t0, t0, 1
@@ -1123,26 +1125,26 @@ loop_heuristic_core_sym2_p_build_skip3:
     bne     t0, t1, loop_heuristic_core_sym2_p_build
 
     # build z.o; a2 pack live
+    # v5c10: same schedule as sym_o; store z.o @ +21
     li      t0, 0
     li      t1, 7
 
 loop_heuristic_core_sym2_o_build:
     lbu     t2, 0(a4)                              # y.o[i]
+    add     a6, a3, t0                             # &sig[i] (v5c10)
+    lbu     a0, 7(a6)                              # kk[i]
     addi    t3, t2, 3
-    add     t2, a3, t0
-    lbu     t2, 7(t2)                              # kk[i]
-    add     t4, t2, t3                             # y.o[i]+3+kk[i]
     lbu     t2, -7(a4)                             # y.p[i]
+    add     t4, a0, t3                             # y.o+3+kk[i]
     add     t3, t2, a3
     lbu     t3, 7(t3)                              # kk[y.p[i]]
-    sub     t4, t4, t3                             # y.o[i]+3+kk[i]-kk[y.p[i]]
+    lbu     a0, 0(a6)                              # sig[i]
+    sub     t4, t4, t3                             # y.o+3+kk[i]-kk[y.p[i]]
 
     add     t4, a7, t4
-    lbu     t4, 0(t4)                              # mod3tab[y.o[i]+3+kk[i]-kk[y.p[i]]]
+    lbu     t4, 0(t4)                              # mod3tab[...]
 
-    add     t2, t0, a3
-    lbu     t3, 0(t2)                              # sig[i]
-    add     t2, t3, s9
+    add     t2, a0, s9
     sb      t4, 21(t2)                             # z.o[sig[i]]
 
     addi    t0, t0, 1
