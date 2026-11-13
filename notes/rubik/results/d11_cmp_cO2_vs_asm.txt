@@ -3,4 +3,4 @@
 @@d11_asm N=2644 bad=0
 @@d11_asm sum=1570689752 min=243288 max=3260939 p50=544074 p90=853913 p99=1466411
 @@d11_cmp len_disagree=0 asm_wins=2644 c_wins=0 tie=0
-@@d11_cmp note=rv32emu_cycle_eq_instret same_order_C_then_ASM v5c7_no_prev_s6
+@@d11_cmp note=rv32emu_cycle_eq_instret same_order_C_then_ASM v5c8_inv_o_lu
