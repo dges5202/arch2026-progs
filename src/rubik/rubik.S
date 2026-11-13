@@ -135,6 +135,9 @@
 #        → .data; linker .data also ALIGN(4)
 #  v5c12 no_prev: addi a0=Q+16 fills lbu from_off → add a6
 #        → no_prev
+#  v5c13 drop solve_loop identity after push (dead under IDA* first-bound);
+#        finds only via r0_id_path → found
+#        → push ends j child
 #
 
     .data
@@ -719,9 +722,8 @@ heuristic_skip3:
     #                            PUSH (g++/r--/Q/P)
     #                              │
     #                              ▼
-    #                          solve_loop (id?)
-    #                         yes → found
-    #                         no  → child   ◄── deepen at m=0 (a1=0)
+    #                            child   ◄── deepen at m=0 (a1=0)
+    #        (v5c13: no post-push identity; solved hits only via r0_id_path)
     #
     #  Edges that skip search_top on purpose:
     #    push → child | same_face (m+3≠MOVES) → child
@@ -1178,7 +1180,7 @@ loop_heuristic_core_sym2_o_index:
 
     PDB_NIBBLE
 
-    # all views h<=r: push; identity → found, else deepen at child (m=0)
+    # all views h<=r: push then deepen (v5c13: identity only via r0_id_path)
     sb      a1,  0(s5)                             # path[g] = m
     li      a1, 0                                  # a1 = m = 0 for the child
     sb      a5, 24(s5)                             # pface[g + 1] = face_of[m] (P + 24)
@@ -1189,18 +1191,7 @@ loop_heuristic_core_sym2_o_index:
     addi    s5, s5, 1                              # P = &path[g + 1]
 
     mv      t5, a5                                 # pface for next depth
-    li      t0, 0
-    li      t1, 7
-    mv      t6, s4
-solve_loop:
-    lbu     t2, 0(t6)                              # t2 = p[i]
-    bne     t0, t2, child
-    lbu     t2, 7(t6)
-    bnez    t2, child
-
-    addi    t0, t0, 1
-    addi    t6, t6, 1
-    bne     t0, t1, solve_loop
+    j       child                                  # deepen at m=0 (no post-push id)
 
 
 found:
