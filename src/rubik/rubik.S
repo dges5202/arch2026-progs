@@ -133,6 +133,8 @@
 #        → loop_heuristic_core_sym_o_build / sym2_o_build
 #  v5c11 .balign 16 on states/scratch (apply_sw_loop lw/sw; strict RV32I)
 #        → .data; linker .data also ALIGN(4)
+#  v5c12 no_prev: addi a0=Q+16 fills lbu from_off → add a6
+#        → no_prev
 #
 
     .data
@@ -829,8 +831,8 @@ no_prev:
     addi    t5, t4, 24                             # &twist[face] (= F+51+face*8)
 
     lbu     t0, 18(t3)                             # t0 = from_off[m]
-    add     a6, s4, t0
-    addi    a0, s4, 16                             # Q + 16
+    addi    a0, s4, 16                             # Q+16 (v5c12 fill from_off→a6)
+    add     a6, s4, t0                             # Fsrc = Q + from_off[m]
 
     beqz    t0, apply_1q_skip
     mv      a0, s9                                 # sibling: dest = scratch
