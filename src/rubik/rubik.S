@@ -144,6 +144,8 @@
 #        → loop_heuristic_core_sym_p_build / sym2_p_build
 #  v5c16 h(inv): fold &child.o[0] to addi a4,s4,23 (= Q+16+7)
 #        → heuristic_core inv setup
+#  v5c17 apply_1q CSE: keep &Fsrc[from] in t6; p in t1; drop 2nd add
+#        → apply_1q
 #
 
     .data
@@ -847,24 +849,24 @@ no_prev:
 apply_1q_skip:
     li      t0, 6
 
-    # v5c4/v5c14 apply_1q LU schedule (index 6..0; li t0=6 + tail bgez):
+    # v5c4/v5c14/v5c17 apply_1q LU + CSE (index 6..0; li t0=6 + bgez):
     #   (a) add dest (t3) fills from→use
     #   (b) add &twist (t2) fills p→sb
     #   (c) lbu twist fills o→add
     #   (d) v5c14: addi t0 fills mod3 lbu→sb
+    #   (e) v5c17: t6=&Fsrc[from] kept; p→t1; o via 7(t6) — no 2nd add
 apply_1q:
     add     t1, t4, t0
     lbu     t1, 0(t1)                              # from = source[face][i]
 
     add     t3, a0, t0                             # &dest.p[i] (fill from)
-    add     t6, a6, t1
-    lbu     t6, 0(t6)                              # p
+    add     t6, a6, t1                             # &Fsrc[from] (keep for o)
+    lbu     t1, 0(t6)                              # p (from done; reuse t1)
 
     add     t2, t5, t0                             # &twist[face][i] (fill p→sb)
-    sb      t6, 0(t3)
+    sb      t1, 0(t3)
 
-    add     t6, a6, t1
-    lbu     t6, 7(t6)                              # o
+    lbu     t6, 7(t6)                              # o (same base; CSE)
     lbu     t1, 0(t2)                              # twist[face][i] (fill o)
     add     t6, t6, t1                             # o + twist
 
