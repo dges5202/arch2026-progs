@@ -55,6 +55,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | ASM `impl_asm.o` **v5c15** | **2688** | **108405** | **111,093** ok |
 | ASM `impl_asm.o` **v5c16** | **2684** | **108405** | **111,089** ok |
 | ASM `impl_asm.o` **v5c17** | **2680** | **108405** | **111,085** ok |
+| ASM `impl_asm.o` **v5c18** | **2672** | **108405** | **111,077** ok |
 
 ## Version table
 
@@ -85,6 +86,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v5c15** | Merge σ/σ² p+o per `i` (share `p`/`sig[i]`) | **567,032** | **−3.58%** emu; **5ST ~−3.7%**; `.text` 2688 |
 | **v5c16** | `h(inv)`: `addi a4,s4,23` (= Q+16+7) | **566,380** | **−0.11%** emu; **5ST ~−0.1%**; `.text` 2684 |
 | **v5c17** | `apply_1q` CSE: keep `&Fsrc[from]` in `t6` | **557,297** | **−1.60%** emu; **5ST ~−1.3%**; `.text` 2680 |
+| **v5c18** | σ/σ² CSE: `a6=&sig[i]`; `kk`→`t6` | **552,384** | **−0.88%** emu; **5ST cycles ≡**; `.text` 2672 |
 
 ## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
 
@@ -142,8 +144,10 @@ v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
 | **v5c16** | max | **3,718,098** | 3,103,060 | **1.198** | 0.835 |
 | **v5c17** | min | **273,725** | 227,727 | **1.202** | 0.832 |
 | **v5c17** | max | **3,667,803** | 3,052,765 | **1.201** | 0.832 |
+| **v5c18** | min | **273,725** | 225,585 | **1.213** | 0.824 |
+| **v5c18** | max | **3,667,803** | 3,024,716 | **1.213** | 0.825 |
 
-Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu; **v5c6** word sibling copy **−10%** emu and 5ST (six of nine moves hit scratch→`Q+16`); **v5c7** kills hot `la` (−0.65% emu); **v5c8–c10** LU/interleave; **v5c11** align; **v5c12** `no_prev` LU **5ST ~−0.17%**; **v5c13** drops dead post-push id (**−0.18%** emu); **v5c14** fills last apply mod3→`sb` (**5ST ~−1.2%**); **v5c15** merges σ/σ² p+o (**−3.6%** emu/5ST, CPI ~flat); **v5c16** folds inv `&child.o` addi (**−0.11%** emu); **v5c17** CSE on `&Fsrc[from]` in apply (**−1.6%** emu / **~−1.3%** 5ST). Judge CPI on Ripes.
+Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu; **v5c6** word sibling copy **−10%** emu and 5ST (six of nine moves hit scratch→`Q+16`); **v5c7** kills hot `la` (−0.65% emu); **v5c8–c10** LU/interleave; **v5c11** align; **v5c12** `no_prev` LU **5ST ~−0.17%**; **v5c13** drops dead post-push id (**−0.18%** emu); **v5c14** fills last apply mod3→`sb` (**5ST ~−1.2%**); **v5c15** merges σ/σ² p+o (**−3.6%** emu/5ST, CPI ~flat); **v5c16** folds inv `&child.o` addi (**−0.11%** emu); **v5c17** CSE on `&Fsrc[from]` in apply (**−1.6%** emu / **~−1.3%** 5ST); **v5c18** CSE on `&sig[i]` in σ/σ² (**−0.88%** emu; 5ST cycles flat, CPI up). Judge CPI on Ripes.
 
 ## Semantics reminder
 
@@ -170,6 +174,7 @@ Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/lay
 - **v5c15**: σ/σ² — one loop per `i` does pack+`y.p`/`z.p` and ori+`y.o`/`z.o`; share `p[i]`/`sig[i]` (`a6`); σ² stores `+14`/`+21`.
 - **v5c16**: `h(inv)` — `addi a4,s4,23` for `&child.o[0]` (was `+16` then `+7`).
 - **v5c17**: `apply_1q` — keep `&Fsrc[from]` in `t6`; load `p` into `t1`; `o` via `7(t6)` (drop second `add`).
+- **v5c18**: σ/σ² — `a6=&sig[i]`; `lbu t6,7(a6)` for `kk`; `mv a6,a0` bare handoff (drop second `&sig` add).
 
 ## GCC vs ASM — CPI vs instruction count
 
@@ -182,7 +187,7 @@ Disasm: `objdump -d -M no-aliases build/rubik/O{2,3}/impl.o`.
 | C `-O2` | 840,081 | 1.235 | 11,935,062 | 1.235 |
 | C `-O3` | 577,365 | **1.112** | 8,194,170 | **1.111** |
 | C `-O3 -flto` | 574,256 | 1.113 | 8,152,521 | 1.112 |
-| ASM **v5c17** | **273,725** | 1.202 | **3,667,803** | 1.201 |
+| ASM **v5c18** | **273,725** | 1.213 | **3,667,803** | 1.213 |
 
 `-flto` ≈ plain `-O3` here (single `rubik.c` TU). JSON: `results/ripes_5s/cO3flto_{min,max}.json`.
 
@@ -190,13 +195,13 @@ Disasm: `objdump -d -M no-aliases build/rubik/O{2,3}/impl.o`.
 
 Static LU on whole `.text` (`objdump -d -M no-aliases`); stall from Ripes min sample (`(cycles−iret)/iret`).
 
-| | C `-O3` | ASM **v5c17** | (old ASM v5c5) |
+| | C `-O3` | ASM **v5c18** | (old ASM v5c5) |
 |--|--------:|-------------:|---------------:|
-| stall / instret (min) | **~0.11** | **~0.20** | ~0.28 |
+| stall / instret (min) | **~0.11** | **~0.21** | ~0.28 |
 | static load→use gap (mean) | ~4.1 | **~2.7** | ~2.5 |
 | share of loads used next insn (gap=1) | ~18% | **~33%** | ~48% |
 
-`-O3` inlines `h_pos3ori` / `sym3` into `heuristic` / `rubik_solve` and software-pipelines cubie loops (`lbu` burst, independent `addi`/`sb` in between). That fills 5ST load-use slots. ASM is still denser (gap=1 ~33% after v5c4–c14 fills + v5c15 merge), so CPI stays ~1.20 vs C’s ~1.11 — but the gap narrowed a lot from the v5c5-era ~48% / CPI ~1.28.
+`-O3` inlines `h_pos3ori` / `sym3` into `heuristic` / `rubik_solve` and software-pipelines cubie loops (`lbu` burst, independent `addi`/`sb` in between). That fills 5ST load-use slots. ASM is still denser (gap=1 ~33% after v5c4–c14 fills + v5c15 merge), so CPI stays ~1.21 vs C’s ~1.11 — but the gap narrowed a lot from the v5c5-era ~48% / CPI ~1.28.
 
 ### Why C still retires far more instructions
 
@@ -207,13 +212,13 @@ Static LU on whole `.text` (`objdump -d -M no-aliases`); stall from Ripes min sa
 | **`%3`** | subtract loops; ASM uses `mod3tab` |
 | **No sibling apply** | full parent apply semantics vs ASM `from_off` 1q |
 
-So: **CPI = quality of the average instruction in the pipe**; **instret = how many you must run**. C wins the first, loses the second by enough that **cycles still favor ASM** (~2.11× vs `-O3` on 5ST min; ~**2.4×** on emu d11 mean with **v5c17**).
+So: **CPI = quality of the average instruction in the pipe**; **instret = how many you must run**. C wins the first, loses the second by enough that **cycles still favor ASM** (~2.11× vs `-O3` on 5ST min; ~**2.4×** on emu d11 mean with **v5c18**).
 
 ### Emu / harness (CPI ≡ 1)
 
-| | C `-O2` | C `-O3` | ASM **v5c17** |
+| | C `-O2` | C `-O3` | ASM **v5c18** |
 |--|--------:|--------:|-------------:|
-| d11 mean | 1,742,455 | 1,329,330 | **557,297** |
+| d11 mean | 1,742,455 | 1,329,330 | **552,384** |
 | harness 6 | 322,553 | 246,708 | **110,161** |
 
 | Tip | Note |

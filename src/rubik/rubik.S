@@ -146,6 +146,8 @@
 #        → heuristic_core inv setup
 #  v5c17 apply_1q CSE: keep &Fsrc[from] in t6; p in t1; drop 2nd add
 #        → apply_1q
+#  v5c18 σ/σ² CSE: a6=&sig[i]; kk→t6; mv a6,a0 bare; drop 2nd &sig add
+#        → loop_heuristic_core_sym_p_build / sym2_p_build
 #
 
     .data
@@ -1014,9 +1016,9 @@ loop_heuristic_core_inv_o:
     addi    a4, s4, 16
 
 
-    # v5c15: per i — pack+scatter y.p and y.o (share p[i]/sig[i])
+    # v5c15/v5c18: per i — pack+scatter y.p/y.o; CSE &sig[i] in a6
     #   a4 walks &child.p[i]; o[i] at 7(a4); t4=3/t5=6 live for pack
-    #   a6 keeps bare sig[i] across a0+=S; ori accum in t6
+    #   v5c18: a6=&sig[i] → lbu kk to t6 → mv a6,a0 bare; ori in t6
     li      t0, 0
     li      t1, 7
     li      t4, 3                                  # cubie 3
@@ -1024,10 +1026,10 @@ loop_heuristic_core_inv_o:
     li      a2, 0                                  # a2 = pack
 loop_heuristic_core_sym_p_build:
     lbu     t2, 0(a4)                              # p[i]
-    add     a0, t0, a3                             # &sig[i] (fill p→use)
+    add     a6, t0, a3                             # &sig[i] (fill p→use; keep)
     add     t3, t2, a3
     lbu     t3, 0(t3)                              # sig[p[i]] = value
-    lbu     a0, 0(a0)                              # sig[i]
+    lbu     a0, 0(a6)                              # sig[i]
 
     # pack before a0 += S (need bare sig[i])
     bnez    t3, loop_heuristic_core_sym_p_build_skip1
@@ -1044,16 +1046,15 @@ loop_heuristic_core_sym_p_build_skip2:
     or      a2, a2, a0                             # | pos6
 
 loop_heuristic_core_sym_p_build_skip3:
-    mv      a6, a0                                 # keep bare sig[i]
+    lbu     t6, 7(a6)                              # kk[i] (a6 still &sig)
+    mv      a6, a0                                 # handoff: a6 = bare sig[i]
     add     a0, a0, s9
     sb      t3, 0(a0)                              # y.p[sig[i]]
 
-    # y.o[sig[i]] = mod3(o+3+kk[i]-kk[p]); t2 still p; a6 still sig[i]
+    # y.o[sig[i]] = mod3(o+3+kk[i]-kk[p]); t2 still p; a6 still bare sig
     lbu     t3, 7(a4)                              # o[i]
-    add     a0, a3, t0                             # &sig[i]
-    lbu     a0, 7(a0)                              # kk[i]
-    addi    t3, t3, 3                              # o+3 (fill kk→use)
-    add     t6, a0, t3                             # o+3+kk
+    addi    t3, t3, 3                              # o+3 (fill o→use)
+    add     t6, t6, t3                             # o+3+kk
     add     t3, t2, a3
     lbu     t3, 7(t3)                              # kk[p]
     add     t2, a6, s9                             # fill kk[p]→sub
@@ -1092,7 +1093,7 @@ loop_heuristic_core_sym_o_index:
     mv      a4, s9                                 # base=&y.p[0]; walks y.p[i]
 
 
-    # per i: pack+scatter z.p@+14 and z.o@+21 (share y.p[i]/sig[i])
+    # v5c18: same CSE as σ; z.p@+14 / z.o@+21; a4 walks y
     li      t0, 0
     li      t1, 7
     li      t4, 3                                  # cubie 3
@@ -1100,11 +1101,12 @@ loop_heuristic_core_sym_o_index:
     li      a2, 0                                  # a2 = pack (fresh for z)
 loop_heuristic_core_sym2_p_build:
     lbu     t2, 0(a4)                              # y.p[i]
-    add     a0, t0, a3                             # &sig[i] (fill p→use)
+    add     a6, t0, a3                             # &sig[i] (fill p→use; keep)
     add     t3, t2, a3
     lbu     t3, 0(t3)                              # sig[y.p[i]] = value
-    lbu     a0, 0(a0)                              # sig[i]
+    lbu     a0, 0(a6)                              # sig[i]
 
+    # pack before a0 += S (need bare sig[i])
     bnez    t3, loop_heuristic_core_sym2_p_build_skip1
     slli    t6, a0, 6
     or      a2, a2, t6                             # | pos0<<6
@@ -1119,16 +1121,15 @@ loop_heuristic_core_sym2_p_build_skip2:
     or      a2, a2, a0                             # | pos6
 
 loop_heuristic_core_sym2_p_build_skip3:
-    mv      a6, a0                                 # keep bare sig[i]
+    lbu     t6, 7(a6)                              # kk[i] (a6 still &sig)
+    mv      a6, a0                                 # handoff: a6 = bare sig[i]
     add     a0, a0, s9
     sb      t3, 14(a0)                             # z.p[sig[i]]
 
-    # z.o[sig[i]] @ +21; t2 still y.p[i]; a6 still sig[i]
+    # z.o[sig[i]] @ +21; t2 still y.p[i]; a6 still bare sig
     lbu     t3, 7(a4)                              # y.o[i]
-    add     a0, a3, t0                             # &sig[i]
-    lbu     a0, 7(a0)                              # kk[i]
-    addi    t3, t3, 3                              # y.o+3
-    add     t6, a0, t3                             # y.o+3+kk
+    addi    t3, t3, 3                              # y.o+3 (fill o→use)
+    add     t6, t6, t3                             # y.o+3+kk
     add     t3, t2, a3
     lbu     t3, 7(t3)                              # kk[y.p[i]]
     add     t2, a6, s9                             # fill kk[p]→sub
