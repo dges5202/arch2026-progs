@@ -138,6 +138,8 @@
 #  v5c13 drop solve_loop identity after push (dead under IDA* first-bound);
 #        finds only via r0_id_path → found
 #        → push ends j child
+#  v5c14 apply_1q: li t0=6; addi after mod3 lbu fills →sb; bgez
+#        → apply_1q
 #
 
     .data
@@ -839,14 +841,14 @@ no_prev:
     beqz    t0, apply_1q_skip
     mv      a0, s9                                 # sibling: dest = scratch
 apply_1q_skip:
-    li      t0, 7
+    li      t0, 6
 
-    # v5c4 apply_1q LU schedule:
+    # v5c4/v5c14 apply_1q LU schedule (index 6..0; li t0=6 + tail bgez):
     #   (a) add dest (t3) fills from→use
     #   (b) add &twist (t2) fills p→sb
-    #   (c) lbu twist fills o→add; mod3→sb may still stall 1
+    #   (c) lbu twist fills o→add
+    #   (d) v5c14: addi t0 fills mod3 lbu→sb
 apply_1q:
-    addi    t0, t0, -1
     add     t1, t4, t0
     lbu     t1, 0(t1)                              # from = source[face][i]
 
@@ -864,9 +866,10 @@ apply_1q:
 
     add     t6, a7, t6                             # &mod3tab[o + twist]
     lbu     t6, 0(t6)                              # mod3tab[o + twist]
+    addi    t0, t0, -1                             # v5c14 fill mod3→sb
 
-    sb      t6, 7(t3)                              # may load-use stall 1
-    bnez    t0, apply_1q
+    sb      t6, 7(t3)
+    bgez    t0, apply_1q
 
 
     addi    t1, s4, 16
