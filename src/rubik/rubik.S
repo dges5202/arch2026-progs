@@ -150,6 +150,8 @@
 #        → loop_heuristic_core_sym_p_build / sym2_p_build
 #  v5c19 drop dead mv a6 after apply_sw; inv p via 16/19/22(s4)
 #        → apply_sw_loop; heuristic_core inv arank loads
+#  v5c20 h(s): fuse pos+ori for i=0..5; peel p[6]; arank keeps t4=o
+#        → loop_heuristic_core_p
 #
 
     .data
@@ -927,43 +929,41 @@ heuristic_core:
     bltu    s3, t0, search_top                     # r < h → prune
     .endm
 
-    # --- h(s): pos in scratch; fold o; PDB_NIBBLE ---
+    # --- h(s): v5c20 fuse pos+ori i=0..5; peel p[6]; then arank ---
+    #     o via 7(a4) before bump; t4=o fold kept across pack (pos3<<3 in t0)
     addi    a4, s4, 16                             # a4 = &child.p[0]
 
-    # build pos[]: scratch[p[i]]=i  (v5c5: addi a4 fills lbu→add)
     li      t0, 0
-    li      t1, 7
+    li      t1, 6
+    li      t4, 0                                  # o fold = 0
 loop_heuristic_core_p:
     lbu     t2, 0(a4)                              # p[i]
+    lbu     t6, 7(a4)                              # o[i] (before bump)
     addi    a4, a4, 1                              # v5c5 fill p→use
     add     t3, t2, s9
     sb      t0, 0(t3)                              # scratch[p[i]] = i
+
+    slli    t3, t4, 1                              # o*2
+    add     t4, t4, t3                             # o*3
+    add     t4, t4, t6                             # o*3 + o[i]
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_p
 
-    # a = arank[pos0<<6 | pos3<<3 | pos6]; a4 now at &child.o[0]
+    # peel i=6: pos only (ori is 0..5); a4 at &p[6]
+    lbu     t2, 0(a4)                              # p[6]
+    add     t3, t2, s9
+    sb      t0, 0(t3)                              # scratch[p[6]] = 6
+
+    # a = arank[pos0<<6 | pos3<<3 | pos6]; keep t4 = o for PDB_NIBBLE
     lbu     t0, 0(s9)                              # pos0 = scratch[0]
     lbu     t1, 3(s9)                              # pos3 = scratch[3]
-    lbu     t2, 6(s9)                              # pos6 = scratch[6]
     slli    t3, t0, 6                              # pos0 << 6
-    slli    t4, t1, 3                              # pos3 << 3
-    or      t5, t3, t4
+    lbu     t2, 6(s9)                              # pos6 = scratch[6]
+    slli    t0, t1, 3                              # pos3 << 3 (not t4)
+    or      t5, t3, t0
     or      t5, t5, t2                             # pack
     add     t6, t5, s7
     lbu     t6, 0(t6)                              # a = arank[...]
-
-    # fold s.o[0..5] → t4
-    li      t0, 0
-    li      t1, 6
-    li      t4, 0                                  # o = 0
-loop_heuristic_core_o:
-    lbu     t2, 0(a4)                              # o[i]
-    slli    t3, t4, 1                              # o*2
-    add     t4, t4, t3                             # o*3
-    add     t4, t4, t2                             # o*3 + o[i]
-    addi    t0, t0, 1
-    addi    a4, a4, 1
-    bne     t0, t1, loop_heuristic_core_o
 
     PDB_NIBBLE
 
