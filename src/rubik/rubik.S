@@ -142,6 +142,8 @@
 #        → apply_1q
 #  v5c15 merge σ/σ² p_build+o_build per i (share p[i]/sig[i]; a4 walks p)
 #        → loop_heuristic_core_sym_p_build / sym2_p_build
+#  v5c16 h(inv): fold &child.o[0] to addi a4,s4,23 (= Q+16+7)
+#        → heuristic_core inv setup
 #
 
     .data
@@ -960,9 +962,9 @@ loop_heuristic_core_o:
     PDB_NIBBLE
 
     # --- h(inv): reuse pos from h(s); arank from child.p[0|3|6] (v2b) ---
-    #     v5c1: inv.o via mod3tab[a7]
-    addi    a4, s4, 16
-    addi    a4, a4, 7                              # &child.o[0] (no inv_p rebuild)
+    #     v5c1: inv.o via mod3tab[a7]; v5c16: one addi for &child.o[0]
+    addi    a4, s4, 23                             # &child.o[0] (= Q+16+7)
+
 
     # a = arank[child.p[0]<<6 | p[3]<<3 | p[6]]
     addi    t0, s4, 16

@@ -1,0 +1,6 @@
+@@d11_c_O2 N=2644 bad=0
+@@d11_c_O2 sum=4607051860 min=680283 max=9664682 p50=1603712 p90=2480438 p99=4041700
+@@d11_asm N=2644 bad=0
+@@d11_asm sum=1497507578 min=231281 max=3103051 p50=518485 p90=814658 p99=1402001
+@@d11_cmp len_disagree=0 asm_wins=2644 c_wins=0 tie=0
+@@d11_cmp note=rv32emu_cycle_eq_instret same_order_C_then_ASM v5c16_inv_o_addi_fold
