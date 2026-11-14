@@ -148,6 +148,8 @@
 #        → apply_1q
 #  v5c18 σ/σ² CSE: a6=&sig[i]; kk→t6; mv a6,a0 bare; drop 2nd &sig add
 #        → loop_heuristic_core_sym_p_build / sym2_p_build
+#  v5c19 drop dead mv a6 after apply_sw; inv p via 16/19/22(s4)
+#        → apply_sw_loop; heuristic_core inv arank loads
 #
 
     .data
@@ -896,7 +898,7 @@ apply_sw_loop:
     sw      t3,  4(t1)
     sw      t4,  8(t1)
     sw      t5, 12(t1)
-    mv      a6, t1
+    # v5c19: no mv a6,t1 — heuristic_core never reads a6 until inv/σ redefine
 
 heuristic_core:
     # 5b. Hot child heuristic — keep a1=m, a5=face; child @ Q+16
@@ -966,15 +968,14 @@ loop_heuristic_core_o:
     PDB_NIBBLE
 
     # --- h(inv): reuse pos from h(s); arank from child.p[0|3|6] (v2b) ---
-    #     v5c1: inv.o via mod3tab[a7]; v5c16: one addi for &child.o[0]
+    #     v5c1: inv.o via mod3tab[a7]; v5c16: &o via s4+23
+    #     v5c19: p[0|3|6] via 16/19/22(s4) — no addi t0,s4,16
     addi    a4, s4, 23                             # &child.o[0] (= Q+16+7)
 
-
     # a = arank[child.p[0]<<6 | p[3]<<3 | p[6]]
-    addi    t0, s4, 16
-    lbu     t1, 0(t0)                              # child.p[0]
-    lbu     t2, 3(t0)                              # child.p[3]
-    lbu     t3, 6(t0)                              # child.p[6]
+    lbu     t1, 16(s4)                             # child.p[0] @ Q+16
+    lbu     t2, 19(s4)                             # child.p[3] @ Q+19
+    lbu     t3, 22(s4)                             # child.p[6] @ Q+22
     slli    t4, t1, 6
     slli    t5, t2, 3
     or      t4, t4, t5
