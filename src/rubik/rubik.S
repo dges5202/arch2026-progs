@@ -140,6 +140,8 @@
 #        → push ends j child
 #  v5c14 apply_1q: li t0=6; addi after mod3 lbu fills →sb; bgez
 #        → apply_1q
+#  v5c15 merge σ/σ² p_build+o_build per i (share p[i]/sig[i]; a4 walks p)
+#        → loop_heuristic_core_sym_p_build / sym2_p_build
 #
 
     .data
@@ -1008,8 +1010,9 @@ loop_heuristic_core_inv_o:
     addi    a4, s4, 16
 
 
-    # build y.p[sig[i]] = sig[p[i]] + arank pack in a2 (v5b)
-    # v5c9: &sig[i] in a0 overlaps p→use; lbu sig[i] fills value→bnez
+    # v5c15: per i — pack+scatter y.p and y.o (share p[i]/sig[i])
+    #   a4 walks &child.p[i]; o[i] at 7(a4); t4=3/t5=6 live for pack
+    #   a6 keeps bare sig[i] across a0+=S; ori accum in t6
     li      t0, 0
     li      t1, 7
     li      t4, 3                                  # cubie 3
@@ -1017,10 +1020,10 @@ loop_heuristic_core_inv_o:
     li      a2, 0                                  # a2 = pack
 loop_heuristic_core_sym_p_build:
     lbu     t2, 0(a4)                              # p[i]
-    add     a0, t0, a3                             # &sig[i] (v5c9 fill p→use)
+    add     a0, t0, a3                             # &sig[i] (fill p→use)
     add     t3, t2, a3
     lbu     t3, 0(t3)                              # sig[p[i]] = value
-    lbu     a0, 0(a0)                              # sig[i] (v5c9 interleave)
+    lbu     a0, 0(a0)                              # sig[i]
 
     # pack before a0 += S (need bare sig[i])
     bnez    t3, loop_heuristic_core_sym_p_build_skip1
@@ -1037,41 +1040,27 @@ loop_heuristic_core_sym_p_build_skip2:
     or      a2, a2, a0                             # | pos6
 
 loop_heuristic_core_sym_p_build_skip3:
-
+    mv      a6, a0                                 # keep bare sig[i]
     add     a0, a0, s9
     sb      t3, 0(a0)                              # y.p[sig[i]]
+
+    # y.o[sig[i]] = mod3(o+3+kk[i]-kk[p]); t2 still p; a6 still sig[i]
+    lbu     t3, 7(a4)                              # o[i]
+    add     a0, a3, t0                             # &sig[i]
+    lbu     a0, 7(a0)                              # kk[i]
+    addi    t3, t3, 3                              # o+3 (fill kk→use)
+    add     t6, a0, t3                             # o+3+kk
+    add     t3, t2, a3
+    lbu     t3, 7(t3)                              # kk[p]
+    add     t2, a6, s9                             # fill kk[p]→sub
+    sub     t6, t6, t3
+    add     t6, a7, t6
+    lbu     t6, 0(t6)                              # mod3tab[...]
+    sb      t6, 7(t2)                              # y.o[sig[i]]
 
     addi    t0, t0, 1
     addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_sym_p_build
-
-
-    # build y.o[...]; a2 pack live; v5c1 %3 via mod3tab (a7)
-    # v5c10: a6=&sig[i]; kk[i]/sig[i] overlap; store y.o @ +7
-    li      t0, 0
-    li      t1, 7
-
-loop_heuristic_core_sym_o_build:
-    lbu     t2, 0(a4)                              # o[i]
-    add     a6, a3, t0                             # &sig[i] (v5c10)
-    lbu     a0, 7(a6)                              # kk[i]
-    addi    t3, t2, 3                              # fill kk→use
-    lbu     t2, -7(a4)                             # p[i]
-    add     t4, a0, t3                             # o[i]+3+kk[i]
-    add     t3, t2, a3
-    lbu     t3, 7(t3)                              # kk[p[i]]
-    lbu     a0, 0(a6)                              # sig[i] (fill kk[p]→sub)
-    sub     t4, t4, t3                             # o[i]+3+kk[i]-kk[p[i]]
-
-    add     t4, a7, t4
-    lbu     t4, 0(t4)                              # mod3tab[...]
-
-    add     t2, a0, s9
-    sb      t4, 7(t2)                              # y.o[sig[i]]
-
-    addi    t0, t0, 1
-    addi    a4, a4, 1
-    bne     t0, t1, loop_heuristic_core_sym_o_build
 
     # v5b: arank from pack in a2 (no sym_p_index 7-scan)
     mv      t6, a2
@@ -1095,73 +1084,58 @@ loop_heuristic_core_sym_o_index:
     PDB_NIBBLE
 
 
-    # --- h(σ²): z=sym3(y); in=y@S+0, out=z@S+14; same v5b pack-while-scatter ---
-    mv      a4, s9                                 # y.p[0], not child
+    # --- h(σ²): z=sym3(y); in=y@S+0, out=z@S+14; v5c15 merged like σ ---
+    mv      a4, s9                                 # base=&y.p[0]; walks y.p[i]
 
 
-    # build z.p[sig[i]] = sig[y.p[i]] at S+14; pack into a2 (v5b)
-    # v5c9: same a0 interleave as sym_p_build
+    # per i: pack+scatter z.p@+14 and z.o@+21 (share y.p[i]/sig[i])
     li      t0, 0
     li      t1, 7
-    li      t4, 3
-    li      t5, 6
+    li      t4, 3                                  # cubie 3
+    li      t5, 6                                  # cubie 6
     li      a2, 0                                  # a2 = pack (fresh for z)
 loop_heuristic_core_sym2_p_build:
     lbu     t2, 0(a4)                              # y.p[i]
-    add     a0, t0, a3                             # &sig[i] (v5c9 fill)
+    add     a0, t0, a3                             # &sig[i] (fill p→use)
     add     t3, t2, a3
     lbu     t3, 0(t3)                              # sig[y.p[i]] = value
-    lbu     a0, 0(a0)                              # sig[i] (v5c9 interleave)
+    lbu     a0, 0(a0)                              # sig[i]
 
     bnez    t3, loop_heuristic_core_sym2_p_build_skip1
     slli    t6, a0, 6
-    or      a2, a2, t6
+    or      a2, a2, t6                             # | pos0<<6
 
 loop_heuristic_core_sym2_p_build_skip1:
     bne     t3, t4, loop_heuristic_core_sym2_p_build_skip2
     slli    t6, a0, 3
-    or      a2, a2, t6
+    or      a2, a2, t6                             # | pos3<<3
 
 loop_heuristic_core_sym2_p_build_skip2:
     bne     t3, t5, loop_heuristic_core_sym2_p_build_skip3
-    or      a2, a2, a0
+    or      a2, a2, a0                             # | pos6
 
 loop_heuristic_core_sym2_p_build_skip3:
-
+    mv      a6, a0                                 # keep bare sig[i]
     add     a0, a0, s9
-    sb      t3, 14(a0)                             # z.p[sig[i]] (not y.p @0)
+    sb      t3, 14(a0)                             # z.p[sig[i]]
+
+    # z.o[sig[i]] @ +21; t2 still y.p[i]; a6 still sig[i]
+    lbu     t3, 7(a4)                              # y.o[i]
+    add     a0, a3, t0                             # &sig[i]
+    lbu     a0, 7(a0)                              # kk[i]
+    addi    t3, t3, 3                              # y.o+3
+    add     t6, a0, t3                             # y.o+3+kk
+    add     t3, t2, a3
+    lbu     t3, 7(t3)                              # kk[y.p[i]]
+    add     t2, a6, s9                             # fill kk[p]→sub
+    sub     t6, t6, t3
+    add     t6, a7, t6
+    lbu     t6, 0(t6)                              # mod3tab[...]
+    sb      t6, 21(t2)                             # z.o[sig[i]]
 
     addi    t0, t0, 1
     addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_sym2_p_build
-
-    # build z.o; a2 pack live
-    # v5c10: same schedule as sym_o; store z.o @ +21
-    li      t0, 0
-    li      t1, 7
-
-loop_heuristic_core_sym2_o_build:
-    lbu     t2, 0(a4)                              # y.o[i]
-    add     a6, a3, t0                             # &sig[i] (v5c10)
-    lbu     a0, 7(a6)                              # kk[i]
-    addi    t3, t2, 3
-    lbu     t2, -7(a4)                             # y.p[i]
-    add     t4, a0, t3                             # y.o+3+kk[i]
-    add     t3, t2, a3
-    lbu     t3, 7(t3)                              # kk[y.p[i]]
-    lbu     a0, 0(a6)                              # sig[i]
-    sub     t4, t4, t3                             # y.o+3+kk[i]-kk[y.p[i]]
-
-    add     t4, a7, t4
-    lbu     t4, 0(t4)                              # mod3tab[...]
-
-    add     t2, a0, s9
-    sb      t4, 21(t2)                             # z.o[sig[i]]
-
-    addi    t0, t0, 1
-    addi    a4, a4, 1
-    bne     t0, t1, loop_heuristic_core_sym2_o_build
-
 
     # v5b: arank from z pack in a2 (no sym2_p_index 7-scan)
     mv      t6, a2

@@ -52,7 +52,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | ASM `impl_asm.o` **v4a** | **2980** | **108398** | **111,378** ok |
 | ASM `impl_asm.o` **v4b** | **2876** | **108398** | **111,274** ok |
 | ASM `impl_asm.o` **v5b** | 2808 | 108398 | 111,206 ok |
-| ASM `impl_asm.o` **v5c14** | **2736** | **108405** | **111,141** ok |
+| ASM `impl_asm.o` **v5c15** | **2688** | **108405** | **111,093** ok |
 
 ## Version table
 
@@ -80,6 +80,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v5c12** | `no_prev`: `addi Q+16` fills `from_off→a6` | **589,145** | emu ≡; **5ST ~−0.17%** |
 | **v5c13** | Drop post-push `solve_loop` id; `j child` | **588,089** | **−0.18%** emu; **5ST ~−0.2%**; `.text` 2736 |
 | **v5c14** | `apply_1q`: `addi` fills mod3→`sb`; `li t0=6`/`bgez` | **588,089** | emu ≡; **5ST ~−1.2%** |
+| **v5c15** | Merge σ/σ² p+o per `i` (share `p`/`sig[i]`) | **567,032** | **−3.58%** emu; **5ST ~−3.7%**; `.text` 2688 |
 
 ## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
 
@@ -131,8 +132,10 @@ v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
 | **v5c13** | max | **3,911,647** | 3,226,279 | **1.212** | 0.825 |
 | **v5c14** | min | **288,263** | 240,735 | **1.197** | 0.835 |
 | **v5c14** | max | **3,861,352** | 3,226,279 | **1.197** | 0.836 |
+| **v5c15** | min | **277,553** | 231,555 | **1.199** | 0.834 |
+| **v5c15** | max | **3,721,107** | 3,106,069 | **1.198** | 0.835 |
 
-Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu; **v5c6** word sibling copy **−10%** emu and 5ST (six of nine moves hit scratch→`Q+16`); **v5c7** kills hot `la` (−0.65% emu); **v5c8–c10** LU/interleave; **v5c11** align; **v5c12** `no_prev` LU **5ST ~−0.17%**; **v5c13** drops dead post-push id (**−0.18%** emu); **v5c14** fills last apply mod3→`sb` (**5ST ~−1.2%**, CPI ~1.197). Judge CPI on Ripes.
+Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu; **v5c6** word sibling copy **−10%** emu and 5ST (six of nine moves hit scratch→`Q+16`); **v5c7** kills hot `la` (−0.65% emu); **v5c8–c10** LU/interleave; **v5c11** align; **v5c12** `no_prev` LU **5ST ~−0.17%**; **v5c13** drops dead post-push id (**−0.18%** emu); **v5c14** fills last apply mod3→`sb` (**5ST ~−1.2%**); **v5c15** merges σ/σ² p+o (**−3.6%** emu/5ST, CPI ~flat). Judge CPI on Ripes.
 
 ## Semantics reminder
 
@@ -156,6 +159,7 @@ Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/lay
 - **v5c12**: `no_prev` — `addi a0,s4,16` between `lbu from_off` and `add a6`.
 - **v5c13**: push ends `j child` (drop `solve_loop` identity); solved only via `r0_id_path`.
 - **v5c14**: `apply_1q` — `li t0,6`; `addi t0,-1` between mod3 `lbu` and `sb`; `bgez` (index 6..0).
+- **v5c15**: σ/σ² — one loop per `i` does pack+`y.p`/`z.p` and ori+`y.o`/`z.o`; share `p[i]`/`sig[i]` (`a6`); σ² stores `+14`/`+21`.
 
 ## GCC vs ASM — CPI vs instruction count
 
@@ -168,7 +172,7 @@ Disasm: `objdump -d -M no-aliases build/rubik/O{2,3}/impl.o`.
 | C `-O2` | 840,081 | 1.235 | 11,935,062 | 1.235 |
 | C `-O3` | 577,365 | **1.112** | 8,194,170 | **1.111** |
 | C `-O3 -flto` | 574,256 | 1.113 | 8,152,521 | 1.112 |
-| ASM **v5c14** | **288,263** | 1.197 | **3,861,352** | 1.197 |
+| ASM **v5c15** | **277,553** | 1.199 | **3,721,107** | 1.198 |
 
 `-flto` ≈ plain `-O3` here (single `rubik.c` TU). JSON: `results/ripes_5s/cO3flto_{min,max}.json`.
 
@@ -191,14 +195,14 @@ Disasm: `objdump -d -M no-aliases build/rubik/O{2,3}/impl.o`.
 | **`%3`** | subtract loops; ASM uses `mod3tab` |
 | **No sibling apply** | full parent apply semantics vs ASM `from_off` 1q |
 
-So: **CPI = quality of the average instruction in the pipe**; **instret = how many you must run**. C wins the first, loses the second by enough that **cycles still favor ASM** (~2.00× vs `-O3` on 5ST min; ~**2.3×** on emu d11 mean with **v5c14**).
+So: **CPI = quality of the average instruction in the pipe**; **instret = how many you must run**. C wins the first, loses the second by enough that **cycles still favor ASM** (~2.08× vs `-O3` on 5ST min; ~**2.3×** on emu d11 mean with **v5c15**).
 
 ### Emu / harness (CPI ≡ 1)
 
-| | C `-O2` | C `-O3` | ASM **v5c14** |
+| | C `-O2` | C `-O3` | ASM **v5c15** |
 |--|--------:|--------:|-------------:|
-| d11 mean | 1,742,455 | 1,329,330 | **588,089** |
-| harness 6 | 322,553 | 246,708 | **113,971** |
+| d11 mean | 1,742,455 | 1,329,330 | **567,032** |
+| harness 6 | 322,553 | 246,708 | **110,161** |
 
 | Tip | Note |
 |-----|------|
