@@ -152,6 +152,8 @@
 #        → apply_sw_loop; heuristic_core inv arank loads
 #  v5c20 h(s): fuse pos+ori for i=0..5; peel p[6]; arank keeps t4=o
 #        → loop_heuristic_core_p
+#  v5c21 apply_1q: fully unroll i=6..0 (.rept); drop li/bgez loop tax
+#        → apply_1q; same LU+CSE body as v5c17 (no addi t0 fill)
 #
 
     .data
@@ -853,36 +855,33 @@ no_prev:
     beqz    t0, apply_1q_skip
     mv      a0, s9                                 # sibling: dest = scratch
 apply_1q_skip:
-    li      t0, 6
-
-    # v5c4/v5c14/v5c17 apply_1q LU + CSE (index 6..0; li t0=6 + bgez):
-    #   (a) add dest (t3) fills from→use
-    #   (b) add &twist (t2) fills p→sb
+    # v5c4/v5c14/v5c17 LU+CSE; v5c21 fully unroll i=6..0 (.rept, no li/bgez):
+    #   (a) addi dest (t3) fills from→use
+    #   (b) addi &twist (t2) fills p→sb
     #   (c) lbu twist fills o→add
-    #   (d) v5c14: addi t0 fills mod3 lbu→sb
-    #   (e) v5c17: t6=&Fsrc[from] kept; p→t1; o via 7(t6) — no 2nd add
+    #   (d) v5c17: t6=&Fsrc[from] kept; p→t1; o via 7(t6) — no 2nd add
+    #   (e) v5c21: drop v5c14 addi t0 fill (optional mod3→sb stall)
 apply_1q:
-    add     t1, t4, t0
-    lbu     t1, 0(t1)                              # from = source[face][i]
+    .set    i, 6
+    .rept   7
+    lbu     t1, i(t4)                              # from = source[face][i]
+    addi    t3, a0, i                              # &dest.p[i] (fill from)
+    add     t6, a6, t1                             # &Fsrc[from] (keep)
+    lbu     t1, 0(t6)                              # p
 
-    add     t3, a0, t0                             # &dest.p[i] (fill from)
-    add     t6, a6, t1                             # &Fsrc[from] (keep for o)
-    lbu     t1, 0(t6)                              # p (from done; reuse t1)
-
-    add     t2, t5, t0                             # &twist[face][i] (fill p→sb)
+    addi    t2, t5, i                              # &twist[face][i] (fill p→sb)
     sb      t1, 0(t3)
 
-    lbu     t6, 7(t6)                              # o (same base; CSE)
-    lbu     t1, 0(t2)                              # twist[face][i] (fill o)
+    lbu     t6, 7(t6)                              # o
+    lbu     t1, 0(t2)                              # twist
     add     t6, t6, t1                             # o + twist
 
-    add     t6, a7, t6                             # &mod3tab[o + twist]
-    lbu     t6, 0(t6)                              # mod3tab[o + twist]
-    addi    t0, t0, -1                             # v5c14 fill mod3→sb
-
+    add     t6, a7, t6                             # &mod3tab[o+twist]
+    lbu     t6, 0(t6)                              # mod3
     sb      t6, 7(t3)
-    bgez    t0, apply_1q
 
+    .set    i, i - 1
+    .endr
 
     addi    t1, s4, 16
     beq     a0, t1, heuristic_core
