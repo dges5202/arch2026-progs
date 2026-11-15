@@ -1,7 +1,7 @@
 # rubik_solve_asm — HW2 IDA* (pos3ori PDB + inv/σ), tables in tables.S / .data
 # Contract: a0=state, a1=out, a2=cap; result in a0 (-1 / -2 / length).
 # Outer: parse / identity / root heuristic / IDA* shell — HW2.
-# Hot child: apply (source/twist) → four-view h waterfall vs r → push / found.
+# Hot child: apply (source/twist) → six-view h waterfall vs r → push / found.
 #
 # -------
 #  COMPLETE REGISTER ARCHITECTURE (HW2)
@@ -159,6 +159,8 @@
 #  v5c23 h(s): fully unroll pos+ori i=0..5 (.rept); fixed 16+i/23+i(s4);
 #        drop a4 walk / li t0,t1 / bne (first view always runs)
 #        → heuristic_core h(s)
+#  V6    six-view h: +inv∘σ +inv∘σ² (reuse y/z; pos@S+28); root+hot
+#        → heuristic_start 3e/3f; heuristic_core after σ²; scratch .zero 48
 #
 
     .data
@@ -167,7 +169,7 @@
 
     .balign 16
     states: .zero 192                              # 12*16; Q=&states[g]; p@0..6 o@7..13
-    scratch:.zero 32                               # inv; σ y@0..13; σ² z.o@21..27 (z.p unused)
+    scratch:.zero 48                               # y@0..13; z@14..27; pos@28..34 (inv∘σ/σ²)
 
     # P-cluster: next=P+11, pface=P+23
     path:   .zero 11
@@ -319,13 +321,12 @@ exit_program:
     j       epilogue
 
 heuristic_start:
-    # 3. Root heuristic → s0 = bound seed (no prune vs r; full max of 4 views)
-    #    Matches rubik.c heuristic() / IDA* initial bound (v1 / v2b order):
-    #      h = max( h_pos3ori(s), h(inv), h(σ(s)), h(σ²(s)) )
+    # 3. Root heuristic → s0 = bound seed (no prune vs r; full max of 6 views)
+    #      h = max( h(s), h(inv), h(σ), h(σ²), h(inv∘σ), h(inv∘σ²) )
     #    (a) pdb_index: a=arank[pos0<<6|pos3<<3|pos6]; o=fold o[0..5]
     #    (b) v3: idx=(a<<10)+o; nibble from rubik_pdb (stride 1024)
-    #    (c) scratch: after h(s), [0..6]=pos=inv.p; σ y@0..13; σ² z@14..27
-    #    (d) s7=A, s8=D, s9=S live through all four views
+    #    (c) scratch: y@0..13; z@14..27; pos@28..34 for inv∘σ/σ²
+    #    (d) s7=A, s8=D, s9=S live through all six views
     #    Note: root σ still uses subtract-%3 + 7-scan index; hot path is v5b/c1.
 
     # 3a. h_pos3ori(s) — index states[0] directly, seed s0 = h
@@ -665,12 +666,126 @@ loop_heuristic_sym2_o_index:
 
 heuristic_skip3:
 
+    # 3e. h_pos3ori(inv(y)) — inv∘σ; y @ S+0; pos @ S+28; max into s0
+    # a = arank[y.p[0]<<6 | y.p[3]<<3 | y.p[6]]
+    lbu     t1, 0(s9)                              # y.p[0]
+    lbu     t2, 3(s9)                              # y.p[3]
+    lbu     t3, 6(s9)                              # y.p[6]
+    slli    t4, t1, 6
+    slli    t5, t2, 3
+    or      t4, t4, t5
+    or      t4, t4, t3
+    add     t6, t4, s7
+    lbu     t6, 0(t6)                              # a = arank[...]
+
+    # pos[y.p[i]] = i → scratch[28..34]
+    li      t0, 0
+    li      t1, 7
+loop_heuristic_inv_sym_p:
+    add     t2, s9, t0
+    lbu     t3, 0(t2)                              # c = y.p[i]
+    addi    t2, s9, 28
+    add     t2, t2, t3
+    sb      t0, 0(t2)                              # pos[c] = i
+    addi    t0, t0, 1
+    bne     t0, t1, loop_heuristic_inv_sym_p
+
+    # fold inv(y).o[0..5]: o=(3-y.o[i])%3, i=pos[j] (subtract-%3)
+    li      t0, 0
+    li      t1, 6
+    li      t4, 0                                  # o fold = 0
+    li      t5, 3
+loop_heuristic_inv_sym_o:
+    addi    t2, s9, 28
+    add     t2, t2, t0
+    lbu     t2, 0(t2)                              # i = pos[j]
+    add     t2, s9, t2
+    lbu     t2, 7(t2)                              # y.o[i]
+    sub     t3, t5, t2                             # 3 - y.o[i]
+    bne     t3, t5, loop_heuristic_inv_sym_o_skip
+    sub     t3, t5, t3                             # if 3: → 0
+loop_heuristic_inv_sym_o_skip:
+    slli    t2, t4, 1
+    add     t4, t4, t2                             # o*3
+    add     t4, t4, t3                             # + inv(y).o[j]
+    addi    t0, t0, 1
+    bne     t0, t1, loop_heuristic_inv_sym_o
+
+    slli    t0, t6, 10
+    add     t0, t0, t4
+    srli    t1, t0, 1
+    add     t2, t1, s8
+    lbu     t3, 0(t2)
+    slli    t4, t0, 2
+    andi    t4, t4, 4
+    srl     t3, t3, t4
+    andi    t0, t3, 15
+    blt     t0, s0, heuristic_skip4
+    mv      s0, t0
+heuristic_skip4:
+
+    # 3f. h_pos3ori(inv(z)) — inv∘σ²; z @ S+14..27; reuse pos @ S+28
+    lbu     t1, 14(s9)                             # z.p[0]
+    lbu     t2, 17(s9)                             # z.p[3]
+    lbu     t3, 20(s9)                             # z.p[6]
+    slli    t4, t1, 6
+    slli    t5, t2, 3
+    or      t4, t4, t5
+    or      t4, t4, t3
+    add     t6, t4, s7
+    lbu     t6, 0(t6)                              # a = arank[...]
+
+    li      t0, 0
+    li      t1, 7
+loop_heuristic_inv_sym2_p:
+    addi    t2, s9, 14
+    add     t2, t2, t0
+    lbu     t3, 0(t2)                              # c = z.p[i]
+    addi    t2, s9, 28
+    add     t2, t2, t3
+    sb      t0, 0(t2)                              # pos[c] = i
+    addi    t0, t0, 1
+    bne     t0, t1, loop_heuristic_inv_sym2_p
+
+    li      t0, 0
+    li      t1, 6
+    li      t4, 0
+    li      t5, 3
+loop_heuristic_inv_sym2_o:
+    addi    t2, s9, 28
+    add     t2, t2, t0
+    lbu     t2, 0(t2)                              # i = pos[j]
+    add     t2, s9, t2
+    lbu     t2, 21(t2)                             # z.o[i]
+    sub     t3, t5, t2                             # 3 - z.o[i]
+    bne     t3, t5, loop_heuristic_inv_sym2_o_skip
+    sub     t3, t5, t3
+loop_heuristic_inv_sym2_o_skip:
+    slli    t2, t4, 1
+    add     t4, t4, t2
+    add     t4, t4, t3
+    addi    t0, t0, 1
+    bne     t0, t1, loop_heuristic_inv_sym2_o
+
+    slli    t0, t6, 10
+    add     t0, t0, t4
+    srli    t1, t0, 1
+    add     t2, t1, s8
+    lbu     t3, 0(t2)
+    slli    t4, t0, 2
+    andi    t4, t4, 4
+    srl     t3, t3, t4
+    andi    t0, t3, 15
+    blt     t0, s0, heuristic_skip5
+    mv      s0, t0
+heuristic_skip5:
+
     # -------
     #  REG MAP at ida_start (after parse / identity / root heuristic)
     # -------
     #
     #  Live now:
-    #    s0  = bound = heuristic(states[0])   (four-view max, verified vs C)
+    #    s0  = bound = heuristic(states[0])   (six-view max)
     #    s7/s8/s9 may still hold A/D/S from heuristic (re-la below OK)
     #    s10 = out,  s11 = cap
     #    states[0] = root cubie state
@@ -909,7 +1024,7 @@ apply_sw_loop:
 heuristic_core:
     # 5b. Hot child heuristic — keep a1=m, a5=face; child @ Q+16
     #     v5c2: beqz s3 → r0_id_path (cold); r≠0 falls into waterfall
-    #     v2b:  s → inv → σ → σ²; each PDB_NIBBLE, h>r → search_top
+    #     waterfall: s → inv → σ → σ² → inv∘σ → inv∘σ²; PDB_NIBBLE, h>r → search_top
     #     v5a:  walk=a4; s1 stays MOVES (no li s1,9 in nibble)
 
     beqz    s3, r0_id_path                         # v5c2: rare r==0
@@ -1092,10 +1207,10 @@ loop_heuristic_core_sym_o_index:
     PDB_NIBBLE
 
 
-    # --- h(σ²): z=sym3(y); in=y@S+0; v5c15 merge + v5c22 no z.p store ---
+    # --- h(σ²): z=sym3(y); in=y@S+0; keep z.p@+14 for inv∘σ² ---
     mv      a4, s9                                 # base=&y.p[0]; walks y.p[i]
 
-    # v5c18 CSE; v5c22: pack in a2 only — drop dead z.p@+14; keep z.o@+21
+    # v5c15/v5c18: per i — pack + scatter z.p/z.o; CSE &sig[i] in a6
     li      t0, 0
     li      t1, 7
     li      t4, 3                                  # cubie 3
@@ -1108,7 +1223,7 @@ loop_heuristic_core_sym2_p_build:
     lbu     t3, 0(t3)                              # sig[y.p[i]] = value
     lbu     a0, 0(a6)                              # sig[i]
 
-    # pack while value/sig live (no z.p sb — arank uses a2)
+    # pack while value/sig live (arank uses a2; also store z.p)
     bnez    t3, loop_heuristic_core_sym2_p_build_skip1
     slli    t6, a0, 6
     or      a2, a2, t6                             # | pos0<<6
@@ -1125,6 +1240,8 @@ loop_heuristic_core_sym2_p_build_skip2:
 loop_heuristic_core_sym2_p_build_skip3:
     lbu     t6, 7(a6)                              # kk[i] (a6 still &sig)
     mv      a6, a0                                 # handoff: a6 = bare sig[i]
+    add     a0, a0, s9
+    sb      t3, 14(a0)                             # z.p[sig[i]] @ S+14
 
     # z.o[sig[i]] @ +21; t2 still y.p[i]; a6 still bare sig
     lbu     t3, 7(a4)                              # y.o[i]
@@ -1142,7 +1259,7 @@ loop_heuristic_core_sym2_p_build_skip3:
     addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_sym2_p_build
 
-    # v5b: arank from z pack in a2 (no sym2_p_index; no z.p memory)
+    # v5b: arank from z pack in a2 (no sym2_p_index scan)
     mv      t6, a2
     add     t6, t6, s7
     lbu     t6, 0(t6)                              # a = arank[pack]
@@ -1159,6 +1276,114 @@ loop_heuristic_core_sym2_o_index:
     add     t4, t4, t2
     addi    t0, t0, 1
     bne     t0, t1, loop_heuristic_core_sym2_o_index
+
+    PDB_NIBBLE
+
+    # --- h(inv∘σ): inv(y); y still @ S+0..13; pos aux @ S+28 ---
+    #     Same shape as h(inv(child)): arank from forward.p[0|3|6],
+    #     ori fold inv.o[j]=mod3(3-y.o[i]) with i=pos[j], pos[y.p[i]]=i.
+    #     (σ overwrote the h(s) pos map; rebuild pos from y.p into +28.)
+    addi    a4, s9, 7                              # &y.o[0]
+
+    # a = arank[y.p[0]<<6 | y.p[3]<<3 | y.p[6]]
+    lbu     t1, 0(s9)                              # y.p[0]
+    lbu     t2, 3(s9)                              # y.p[3]
+    lbu     t3, 6(s9)                              # y.p[6]
+    slli    t4, t1, 6
+    slli    t5, t2, 3
+    or      t4, t4, t5
+    or      t4, t4, t3
+    add     t6, t4, s7
+    lbu     t6, 0(t6)                              # a = arank[...]  (keep for PDB)
+
+    # pos[y.p[i]] = i → scratch[28..34]; does not clobber y.o
+    li      t0, 0
+    li      t1, 7
+loop_heuristic_core_inv_sym_p:
+    add     t2, s9, t0
+    lbu     t3, 0(t2)                              # c = y.p[i]
+    addi    t2, s9, 28
+    add     t2, t2, t3                             # &pos[c]
+    sb      t0, 0(t2)                              # pos[c] = i
+    addi    t0, t0, 1
+    bne     t0, t1, loop_heuristic_core_inv_sym_p
+
+    # fold inv(y).o[0..5]: o=(3-y.o[i])%3, i=pos[j]
+    # v5c8 LU: addi fills lbu i→add; slli a6=o*2 fills lbu y.o→sub
+    #          (a6 scratch only; t6 must keep a for PDB_NIBBLE)
+    li      t0, 0
+    li      t1, 6
+    li      t4, 0                                  # o fold = 0
+    li      t5, 3                                  # for (3-x)%3
+loop_heuristic_core_inv_sym_o:
+    addi    t2, s9, 28
+    add     t2, t2, t0                             # &pos[j]
+    lbu     t2, 0(t2)                              # i = pos[j]
+    addi    t0, t0, 1                              # v5c8 fill lbu i→add
+    add     t2, a4, t2                             # &y.o[i]
+    lbu     t2, 0(t2)                              # y.o[i]
+    slli    a6, t4, 1                              # v5c8 fill y.o→sub (o*2)
+    sub     t3, t5, t2                             # 3 - y.o[i]
+
+    add     t3, a7, t3
+    lbu     t3, 0(t3)                              # mod3tab[3 - y.o[i]]
+
+    add     t4, t4, a6                             # o*3 (also fills mod3→use)
+    add     t4, t4, t3                             # + inv(y).o[j]
+    bne     t0, t1, loop_heuristic_core_inv_sym_o
+
+    PDB_NIBBLE
+
+    # --- h(inv∘σ²): inv(z); z @ S+14..27; reuse pos aux @ S+28 ---
+    #     Same as inv∘σ with bases shifted: z.p@+14, z.o@+21.
+    addi    a4, s9, 21                             # &z.o[0]
+
+    # a = arank[z.p[0]<<6 | z.p[3]<<3 | z.p[6]]
+    lbu     t1, 14(s9)                             # z.p[0]
+    lbu     t2, 17(s9)                             # z.p[3]
+    lbu     t3, 20(s9)                             # z.p[6]
+    slli    t4, t1, 6
+    slli    t5, t2, 3
+    or      t4, t4, t5
+    or      t4, t4, t3
+    add     t6, t4, s7
+    lbu     t6, 0(t6)                              # a = arank[...]  (keep for PDB)
+
+    # pos[z.p[i]] = i → scratch[28..34] (overwrite inv∘σ pos)
+    li      t0, 0
+    li      t1, 7
+loop_heuristic_core_inv_sym2_p:
+    addi    t2, s9, 14
+    add     t2, t2, t0                             # &z.p[i]
+    lbu     t3, 0(t2)                              # c = z.p[i]
+    addi    t2, s9, 28
+    add     t2, t2, t3                             # &pos[c]
+    sb      t0, 0(t2)                              # pos[c] = i
+    addi    t0, t0, 1
+    bne     t0, t1, loop_heuristic_core_inv_sym2_p
+
+    # fold inv(z).o[0..5]: o=(3-z.o[i])%3, i=pos[j]
+    # v5c8 LU: same schedule as inv∘σ / h(inv)
+    li      t0, 0
+    li      t1, 6
+    li      t4, 0                                  # o fold = 0
+    li      t5, 3                                  # for (3-x)%3
+loop_heuristic_core_inv_sym2_o:
+    addi    t2, s9, 28
+    add     t2, t2, t0                             # &pos[j]
+    lbu     t2, 0(t2)                              # i = pos[j]
+    addi    t0, t0, 1                              # v5c8 fill lbu i→add
+    add     t2, a4, t2                             # &z.o[i]
+    lbu     t2, 0(t2)                              # z.o[i]
+    slli    a6, t4, 1                              # v5c8 fill z.o→sub (o*2)
+    sub     t3, t5, t2                             # 3 - z.o[i]
+
+    add     t3, a7, t3
+    lbu     t3, 0(t3)                              # mod3tab[3 - z.o[i]]
+
+    add     t4, t4, a6                             # o*3 (also fills mod3→use)
+    add     t4, t4, t3                             # + inv(z).o[j]
+    bne     t0, t1, loop_heuristic_core_inv_sym2_o
 
     PDB_NIBBLE
 
