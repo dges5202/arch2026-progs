@@ -62,6 +62,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | ASM `impl_asm.o` **v5c22** | **2920** | **108405** | **111,325** ok |
 | ASM `impl_asm.o` **v5c23** | **3064** | **108405** | **111,469** ok |
 | ASM `impl_asm.o` **V6** | **3816** | **108421** | **112,237** ok |
+| ASM `impl_asm.o` **V6.a** | **3756** | **108421** | **112,177** ok |
 
 ## Version table
 
@@ -99,6 +100,7 @@ Logs: `d11_cmp_*_v1/v2/v2b/v3.txt`.
 | **v5c22** | Drop dead `z.p` stores in h(σ²); keep `z.o` | **488,530** | **−0.82%** emu; **5ST ~−0.8%**; `.text` 2920 |
 | **v5c23** | h(s) `.rept` unroll i=0..5; fixed `16+i`/`23+i`(s4) | **470,413** | **−3.71%** emu; **5ST ~−5%**; `.text` 3064 |
 | **V6** | six-view: +`inv∘σ` +`inv∘σ²` (reuse y/z; `pos@S+28`) | **436,958** | **−7.11%** emu; 5ST min **+3.3%** / max **−17.5%**; `.text` 3816 |
+| **V6.a** | fuse `pos_y`/`pos_z` into σ/σ²; drop inv pos rebuild | **424,945** | **−2.75%** emu vs V6; 5ST ~**−3%**; `.text` 3756 |
 
 ## Ripes 5-stage (`RV32_5S`) — d11 min/max samples
 
@@ -170,8 +172,10 @@ v1 ELF = commit `70ba7d0` + parse `sll` fix (as measured baseline).
 | **v5c23** | max | **3,029,132** | 2,565,550 | **1.181** | 0.847 |
 | **V6** | min | **236,343** | 200,054 | **1.181** | 0.846 |
 | **V6** | max | **2,499,236** | 2,114,918 | **1.182** | 0.846 |
+| **V6.a** | min | **229,819** | 195,450 | **1.176** | 0.850 |
+| **V6.a** | max | **2,415,782** | 2,054,708 | **1.176** | 0.851 |
 
-Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu; **v5c6** word sibling copy **−10%** emu and 5ST (six of nine moves hit scratch→`Q+16`); **v5c7** kills hot `la` (−0.65% emu); **v5c8–c10** LU/interleave; **v5c11** align; **v5c12** `no_prev` LU **5ST ~−0.17%**; **v5c13** drops dead post-push id (**−0.18%** emu); **v5c14** fills last apply mod3→`sb` (**5ST ~−1.2%**); **v5c15** merges σ/σ² p+o (**−3.6%** emu/5ST, CPI ~flat); **v5c16** folds inv `&child.o` addi (**−0.11%** emu); **v5c17** CSE on `&Fsrc[from]` in apply (**−1.6%** emu / **~−1.3%** 5ST); **v5c18** CSE on `&sig[i]` in σ/σ² (**−0.88%** emu; 5ST cycles flat, CPI up); **v5c19** dead `mv a6` + inv offset loads (**−0.27%** emu / **~−0.2%** 5ST); **v5c20** fuse h(s) pos+ori (**−5.4%** emu / **~−6%** 5ST); **v5c21** apply `.rept` unroll (**−5.5%** emu/5ST, `.text` +272); **v5c22** drop dead σ² `z.p` stores (**−0.8%**); **v5c23** h(s) `.rept` unroll (**−3.7%** emu / **~−5%** 5ST, CPI ~1.20→~1.18); **V6** six-view (**−7.1%** emu; 5ST max **−17.5%**, min **+3.3%**). Judge CPI on Ripes.
+Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/layout; **v5c3** nibble ≡; **v5c4–c5** LU fills (~1% each) at flat emu; **v5c6** word sibling copy **−10%** emu and 5ST (six of nine moves hit scratch→`Q+16`); **v5c7** kills hot `la` (−0.65% emu); **v5c8–c10** LU/interleave; **v5c11** align; **v5c12** `no_prev` LU **5ST ~−0.17%**; **v5c13** drops dead post-push id (**−0.18%** emu); **v5c14** fills last apply mod3→`sb` (**5ST ~−1.2%**); **v5c15** merges σ/σ² p+o (**−3.6%** emu/5ST, CPI ~flat); **v5c16** folds inv `&child.o` addi (**−0.11%** emu); **v5c17** CSE on `&Fsrc[from]` in apply (**−1.6%** emu / **~−1.3%** 5ST); **v5c18** CSE on `&sig[i]` in σ/σ² (**−0.88%** emu; 5ST cycles flat, CPI up); **v5c19** dead `mv a6` + inv offset loads (**−0.27%** emu / **~−0.2%** 5ST); **v5c20** fuse h(s) pos+ori (**−5.4%** emu / **~−6%** 5ST); **v5c21** apply `.rept` unroll (**−5.5%** emu/5ST, `.text` +272); **v5c22** drop dead σ² `z.p` stores (**−0.8%**); **v5c23** h(s) `.rept` unroll (**−3.7%** emu / **~−5%** 5ST, CPI ~1.20→~1.18); **V6** six-view (**−7.1%** emu; 5ST max **−17.5%**, min **+3.3%**); **V6.a** fuse inv pos into σ/σ² (**−2.75%** emu / ~**−3%** 5ST). Judge CPI on Ripes.
 
 ## Semantics reminder
 
@@ -205,6 +209,7 @@ Takeaway: v4b was the big apply win; v5b cuts index scans; **v5c1–c2** CPI/lay
 - **v5c22**: h(σ²) — drop dead `z.p` `sb`/`add` (pack already in `a2`); keep `z.o@+21`.
 - **v5c23**: h(s) — `.rept 6` with fixed `16+i`/`23+i`(s4); drop `a4` walk / `li`/`bne` (first view always runs).
 - **V6**: six-view — +`inv∘σ`/`inv∘σ²` after σ² (reuse y/z; `pos@S+28`; restore `z.p`; root six-view max); scratch `.zero 48`.
+- **V6.a**: hot — fuse `pos_y@+28` / `pos_z@+35` into σ/σ² scatter; drop `inv_sym*_p` rebuild; `inv∘σ²` ori reads +35.
 
 ## GCC vs ASM — CPI vs instruction count
 
@@ -217,7 +222,7 @@ Disasm: `objdump -d -M no-aliases build/rubik/O{2,3}/impl.o`.
 | C `-O2` | 840,081 | 1.235 | 11,935,062 | 1.235 |
 | C `-O3` | 577,365 | **1.112** | 8,194,170 | **1.111** |
 | C `-O3 -flto` | 574,256 | 1.113 | 8,152,521 | 1.112 |
-| ASM **V6** | **236,343** | 1.181 | **2,499,236** | 1.182 |
+| ASM **V6.a** | **229,819** | 1.176 | **2,415,782** | 1.176 |
 
 `-flto` ≈ plain `-O3` here (single `rubik.c` TU). JSON: `results/ripes_5s/cO3flto_{min,max}.json`.
 
@@ -225,7 +230,7 @@ Disasm: `objdump -d -M no-aliases build/rubik/O{2,3}/impl.o`.
 
 Static LU on whole `.text` (`objdump -d -M no-aliases`); stall from Ripes min sample (`(cycles−iret)/iret`).
 
-| | C `-O3` | ASM **V6** | (old ASM v5c5) |
+| | C `-O3` | ASM **V6.a** | (old ASM v5c5) |
 |--|--------:|-------------:|---------------:|
 | stall / instret (min) | **~0.11** | **~0.18** | ~0.28 |
 | static load→use gap (mean) | ~4.1 | **~2.7** | ~2.5 |
@@ -242,14 +247,14 @@ Static LU on whole `.text` (`objdump -d -M no-aliases`); stall from Ripes min sa
 | **`%3`** | subtract loops; ASM uses `mod3tab` |
 | **No sibling apply** | full parent apply semantics vs ASM `from_off` 1q |
 
-So: **CPI = quality of the average instruction in the pipe**; **instret = how many you must run**. C wins the first, loses the second by enough that **cycles still favor ASM** (~2.44× vs `-O3` on 5ST min; ~**3.04×** on emu d11 mean with **V6**).
+So: **CPI = quality of the average instruction in the pipe**; **instret = how many you must run**. C wins the first, loses the second by enough that **cycles still favor ASM** (~2.51× vs `-O3` on 5ST min; ~**3.13×** on emu d11 mean with **V6.a**).
 
 ### Emu / harness (CPI ≡ 1)
 
-| | C `-O2` | C `-O3` | ASM **V6** |
+| | C `-O2` | C `-O3` | ASM **V6.a** |
 |--|--------:|--------:|-------------:|
-| d11 mean | 1,742,455 | 1,329,330 | **436,958** |
-| harness 6 | 322,553 | 246,708 | **82,645** |
+| d11 mean | 1,742,455 | 1,329,330 | **424,945** |
+| harness 6 | 322,553 | 246,708 | **79,644** |
 
 | Tip | Note |
 |-----|------|
