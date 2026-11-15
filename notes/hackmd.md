@@ -50,6 +50,15 @@ $$
 
 God’s number for this metric is **11**; there are **2644** states at distance 11 (the hard KPI layer).
 
+**IDA* node visits (host full-space scan, same heuristic as guest).** Counts from [`scan_nodes.c`](rubik/tools/scan_nodes.c) / Round E in [`exp-waterfall-order.md`](rubik/exp-waterfall-order.md): `gen` = children after apply; `expand` = nodes pushed after surviving `h > r`. Waterfall order changes work *inside* each `h`, not these tree sizes.
+
+| layer | count | avg gen | avg expand | **max gen** | **max expand** |
+|-------|------:|--------:|-----------:|------------:|---------------:|
+| all reachable | 3,674,160 | 112.3 | 19.8 | 7,185 | 1,194 |
+| **d = 11 (hardest)** | **2,644** | **1,297.5** | **216.0** | **7,185** | **1,194** |
+
+Worst case anywhere in the space is a distance-11 state: **7,185** children generated / **1,194** nodes expanded.
+
 **Encoding.** Fourteen ASCII digits `PPPPPPPOOOOOOO`: permutation `'1'..'7'` then orientation `'1'..'3'`. Solved cube: `12345671111111`.
 
 **Generators.** Faces R, B, D; nine moves `R R2 R' B B2 B' D D2 D'`. Same-face consecutive moves are skipped in search (`face_of`).
@@ -64,13 +73,13 @@ God’s number for this metric is **11**; there are **2644** states at distance 
 
 **Speed (rv32emu).** Here `cycle` ≡ `instret` (CPI = 1), so the d11 **mean** is an instruction KPI:
 
-| | C `-O2` | C `-O3` | C `-O3 -flto` | ASM **v5c21** |
+| | C `-O2` | C `-O3` | C `-O3 -flto` | ASM **v5c22** |
 |--|--------:|--------:|--------------:|-------------:|
-| d11 mean (2644) | 1,742,455 | 1,329,330 | 1,348,452 | **492,562** |
-| vs ASM | **3.54×** | **2.70×** | **2.74×** |  |
-| harness 6-depth | 322,553 | 246,708 |  | **96,419** |
+| d11 mean (2644) | 1,742,455 | 1,329,330 | 1,348,452 | **488,530** |
+| vs ASM | **3.57×** | **2.72×** | **2.76×** |  |
+| harness 6-depth | 322,553 | 246,708 |  | **95,649** |
 
-Peak ASM d11 max ≈ 2.69M ≪ `RUBIK_INSN_BUDGET` (7.5M). `-O3` (inline `sym3` / `h_pos3ori`) cuts ~24% vs `-O2`; `-flto` adds little on this single-TU solver. ASM is still ~**2.70×** the best C on the d11 mean.
+Peak ASM d11 max ≈ 2.67M ≪ `RUBIK_INSN_BUDGET` (7.5M). `-O3` (inline `sym3` / `h_pos3ori`) cuts ~24% vs `-O2`; `-flto` adds little on this single-TU solver. ASM is still ~**2.72×** the best C on the d11 mean.
 
 **Pipeline (Ripes `RV32_5S`).** Same emu min/max d11 samples (not the 2644 mean). Detail: §1.5 and [`bench-v1.md`](rubik/bench-v1.md).
 
@@ -79,17 +88,17 @@ Peak ASM d11 max ≈ 2.69M ≪ `RUBIK_INSN_BUDGET` (7.5M). `-O3` (inline `sym3` 
 | C `-O2` | 840,081 | **1.235** | 11,935,062 | **1.235** | 0.33 / 0.31 |
 | C `-O3` | 577,365 | **1.112** | 8,194,170 | **1.111** | 0.48 / 0.45 |
 | C `-O3 -flto` | 574,256 | **1.113** | 8,152,521 | **1.112** | 0.48 / 0.46 |
-| ASM **v5c21** | **242,750** | 1.201 | **3,229,106** | 1.199 |  |
+| ASM **v5c22** | **240,916** | 1.202 | **3,201,428** | 1.201 |  |
 
-**Why C wins CPI but loses instructions / cycles.** CPI on 5ST is stall rate, not speed. Static load→use on current objects (`objdump -d -M no-aliases`, whole `.text`): GCC `-O3` mean gap ≈**4.1**, gap=1 only ~**18%**; ASM **v5c21** mean gap ≈**2.7**, gap=1 ~**33%** (was ~48% around v5c5 before the LU-fill series). Dynamic stall/insn on the Ripes min sample is ~**0.11** (C `-O3`) vs ~**0.20** (ASM v5c21; was ~0.28 at v5c5). Instruction count is the other axis: C **never waterfalls** (every child pays all four views), keeps call/spill around `heuristic`, and uses subtract-`%3` instead of `mod3tab` — so C’s d11 mean stays ~**2.7×** ASM even though each C instruction bubbles less. Net: **lower CPI, higher cycles**. Artifacts: [`d11_cmp_cO3flto_vs_asm.txt`](rubik/results/d11_cmp_cO3flto_vs_asm.txt), [`ripes_5s/cO3flto_*.json`](rubik/results/ripes_5s/).
+**Why C wins CPI but loses instructions / cycles.** CPI on 5ST is stall rate, not speed. Static load→use on current objects (`objdump -d -M no-aliases`, whole `.text`): GCC `-O3` mean gap ≈**4.1**, gap=1 only ~**18%**; ASM **v5c22** mean gap ≈**2.7**, gap=1 ~**33%** (was ~48% around v5c5 before the LU-fill series). Dynamic stall/insn on the Ripes min sample is ~**0.11** (C `-O3`) vs ~**0.20** (ASM v5c22; was ~0.28 at v5c5). Instruction count is the other axis: C **never waterfalls** (every child pays all four views), keeps call/spill around `heuristic`, and uses subtract-`%3` instead of `mod3tab` — so C’s d11 mean stays ~**2.7×** ASM even though each C instruction bubbles less. Net: **lower CPI, higher cycles**. Artifacts: [`d11_cmp_cO3flto_vs_asm.txt`](rubik/results/d11_cmp_cO3flto_vs_asm.txt), [`ripes_5s/cO3flto_*.json`](rubik/results/ripes_5s/).
 
-**Footprint.** `RUBIK_DATA_BUDGET` = 128 KiB (`size -A`). ASM `impl_asm.o` **v5c21**: `.text` **2928** + data **108405** → **111,333** ok. C `-O2` impl ≈ **110,298**.
+**Footprint.** `RUBIK_DATA_BUDGET` = 128 KiB (`size -A`). ASM `impl_asm.o` **v5c22**: `.text` **2920** + data **108405** → **111,325** ok. C `-O2` impl ≈ **110,298**.
 
 ## 1.4 Verification
 
 - **Course micro-tests** (`tests/trubik.c` via `O2/rubik.elf`): depths 0–11 samples, solved, single moves, chains, invalid states, small `cap` → `-2`, C↔ASM length agreement — **52 passed** (`tests_rc=0`).
-- **d11 battery:** 2644 God’s-number-11 states; C then ASM; length agree (`len_disagree=0`); ASM wins every cycle comparison on rv32emu ([`results/d11_cmp_v5c21.txt`](rubik/results/d11_cmp_v5c21.txt)).
-- **Budgets:** instruction caps in `rubik.h`; data budget via `scripts/driver.py` / `size -A` (ASM text+data **111,333** ≤ 128 KiB).
+- **d11 battery:** 2644 God’s-number-11 states; C then ASM; length agree (`len_disagree=0`); ASM wins every cycle comparison on rv32emu ([`results/d11_cmp_v5c22.txt`](rubik/results/d11_cmp_v5c22.txt)).
+- **Budgets:** instruction caps in `rubik.h`; data budget via `scripts/driver.py` / `size -A` (ASM text+data **111,325** ≤ 128 KiB).
 - **Ripes:** CLI `RV32_5S` on a tiny ELF that only calls `rubik_solve_asm` ([`results/ripes_5s/`](rubik/results/ripes_5s/)) — CPI/stall check, not a substitute for the 2644 mean.
 
 ## 1.5 Optimization
@@ -129,8 +138,9 @@ Baseline numbers: [`notes/rubik/bench-v1.md`](rubik/bench-v1.md). Depth-11 = har
 | **v5c19** | Drop dead `mv a6` after `apply_sw`; inv `p` via `16/19/22(s4)` | **550,871** | **3.16×** | CPI **1.214** / **1.213**; cycles **273,125** / **3,660,008** | **−0.27%** emu; **5ST ~−0.2%**; `.text` **2664** |
 | **v5c20** | Fuse h(s) pos+ori for `i=0..5`; peel `p[6]` | **521,108** | **3.34×** | CPI **1.202** / **1.200**; cycles **256,493** / **3,423,101** | **−5.40%** emu; **5ST ~−6.1%**; `.text` **2656** |
 | **v5c21** | `apply_1q` fully unroll `i=6..0` (`.rept`) | **492,562** | **3.54×** | CPI **1.201** / **1.199**; cycles **242,750** / **3,229,106** | **−5.48%** emu; **5ST ~−5.5%**; `.text` **2928** |
+| **v5c22** | Drop dead `z.p` stores in h(σ²); keep `z.o` | **488,530** | **3.57×** | CPI **1.202** / **1.201**; cycles **240,916** / **3,201,428** | **−0.82%** emu; **5ST ~−0.8%**; `.text` **2920** |
 
-Raw d11 compare dumps stay in the repo under `notes/rubik/results/` (not linked row-by-row). Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`). v5c2 makes the common `r≠0` path fall through into the waterfall. v5c3 aligns nibble extract with GCC’s form; no cycle win alone. v5c4–v5c5 fill load-use slots in apply and pos-build. **v5c6** replaces the sibling byte-copy (~84 insn) with eight word moves — large because six of nine moves take the scratch path. **v5c7** drops the per-child `la source`/`la twist` pair; F-cluster layout already places them at `s6+27` / `s6+51`. **v5c8** fills the two `lbu t2`→use edges in `inv_o` (`addi t0` + `slli a6`); `a6` is the temp so `t6` still holds arank `a` for `PDB_NIBBLE`. **v5c9** overlaps independent `&sig[i]` with `p[i]`→use and interleaves `lbu sig[i]` against `sig[p[i]]` in both σ and σ² `p_build`. **v5c10** does the same for `o_build`: keep `a6=&sig[i]`, load `kk[i]`/`sig[i]` around the `kk[p]` use, drop a redundant address add (also −8B `.text`). **v5c11** forces 16-byte alignment on the `lw`/`sw` slots so strict RV32I cannot misaligned-trap if `.data` placement shifts. **v5c12** slides the independent `addi a0,s4,16` into the `from_off` load-use gap in `no_prev`. **v5c13** drops the post-push identity scan (`solve_loop`): under IDA* return-on-first-bound it never reached `found` (solved hits only via cold `r0_id_path`), so push ends in `j child` (−36B `.text`, ~−0.18% emu). **v5c14** moves the countdown `addi` between mod3 `lbu` and `sb` (`li t0=6` + `bgez`), killing the last apply load-use (~−1.2% 5ST; emu flat). **v5c15** folds σ/σ² `o_build` into the `p_build` loop so each `i` shares `p[i]`/`sig[i]` (keep bare `sig[i]` in `a6`; ori in `t6`; σ² stores `z` at `+14`/`+21`) — ~−3.6% emu/5ST from fewer loads and one less loop trip. **v5c16** folds the two-`addi` `&child.o[0]` setup (`s4+16` then `+7`) into one `addi a4,s4,23` (−4B `.text`, ~−0.11% emu). **v5c17** keeps `&Fsrc[from]` in `t6` through the ori load (`p` in `t1`) so `apply_1q` drops the second `add t6,a6,t1` (−7 insn/apply; ~−1.6% emu / ~−1.3% 5ST). **v5c18** keeps `&sig[i]` in `a6` through `kk[i]` (`lbu t6,7(a6)` then `mv a6,a0` bare) in both σ/σ² — ~−0.9% emu; on these 5ST samples cycles stayed flat while iret fell (CPI ~1.20→~1.21). **v5c19** drops the unused `mv a6,t1` after sibling word-copy and folds inv `child.p[0|3|6]` into `lbu …,16/19/22(s4)` (−2 insn static; ~−0.3% emu / ~−0.2% 5ST). **v5c20** fuses h(s) `pos[]`+ori fold for `i=0..5` (`o` via `7(a4)`), peels `p[6]`, and keeps `t4=o` across arank pack — every child pays h(s), so ~−5.4% emu / ~−6% 5ST. **v5c21** fully unrolls `apply_1q` with `.rept` (`i=6..0` immediates; drop `li`/`bgez` and the v5c14 `addi t0` fill) — ~−5.5% emu/5ST at +272B `.text`.
+Raw d11 compare dumps stay in the repo under `notes/rubik/results/` (not linked row-by-row). Root cause of v2 regress: putting **inv after σ** forced a pos rebuild. `r0` / macro were innocent. v3 pads PDB for a cheap shift index. v4b reuses prior face-turn at `Q+16` for R2/R'. v5b folds arank pack while scattering `y.p`/`z.p`. v5c1 trades a bit of emu instret for lower 5ST CPI (branch-free `%3`). v5c2 makes the common `r≠0` path fall through into the waterfall. v5c3 aligns nibble extract with GCC’s form; no cycle win alone. v5c4–v5c5 fill load-use slots in apply and pos-build. **v5c6** replaces the sibling byte-copy (~84 insn) with eight word moves — large because six of nine moves take the scratch path. **v5c7** drops the per-child `la source`/`la twist` pair; F-cluster layout already places them at `s6+27` / `s6+51`. **v5c8** fills the two `lbu t2`→use edges in `inv_o` (`addi t0` + `slli a6`); `a6` is the temp so `t6` still holds arank `a` for `PDB_NIBBLE`. **v5c9** overlaps independent `&sig[i]` with `p[i]`→use and interleaves `lbu sig[i]` against `sig[p[i]]` in both σ and σ² `p_build`. **v5c10** does the same for `o_build`: keep `a6=&sig[i]`, load `kk[i]`/`sig[i]` around the `kk[p]` use, drop a redundant address add (also −8B `.text`). **v5c11** forces 16-byte alignment on the `lw`/`sw` slots so strict RV32I cannot misaligned-trap if `.data` placement shifts. **v5c12** slides the independent `addi a0,s4,16` into the `from_off` load-use gap in `no_prev`. **v5c13** drops the post-push identity scan (`solve_loop`): under IDA* return-on-first-bound it never reached `found` (solved hits only via cold `r0_id_path`), so push ends in `j child` (−36B `.text`, ~−0.18% emu). **v5c14** moves the countdown `addi` between mod3 `lbu` and `sb` (`li t0=6` + `bgez`), killing the last apply load-use (~−1.2% 5ST; emu flat). **v5c15** folds σ/σ² `o_build` into the `p_build` loop so each `i` shares `p[i]`/`sig[i]` (keep bare `sig[i]` in `a6`; ori in `t6`; σ² stores `z` at `+14`/`+21`) — ~−3.6% emu/5ST from fewer loads and one less loop trip. **v5c16** folds the two-`addi` `&child.o[0]` setup (`s4+16` then `+7`) into one `addi a4,s4,23` (−4B `.text`, ~−0.11% emu). **v5c17** keeps `&Fsrc[from]` in `t6` through the ori load (`p` in `t1`) so `apply_1q` drops the second `add t6,a6,t1` (−7 insn/apply; ~−1.6% emu / ~−1.3% 5ST). **v5c18** keeps `&sig[i]` in `a6` through `kk[i]` (`lbu t6,7(a6)` then `mv a6,a0` bare) in both σ/σ² — ~−0.9% emu; on these 5ST samples cycles stayed flat while iret fell (CPI ~1.20→~1.21). **v5c19** drops the unused `mv a6,t1` after sibling word-copy and folds inv `child.p[0|3|6]` into `lbu …,16/19/22(s4)` (−2 insn static; ~−0.3% emu / ~−0.2% 5ST). **v5c20** fuses h(s) `pos[]`+ori fold for `i=0..5` (`o` via `7(a4)`), peels `p[6]`, and keeps `t4=o` across arank pack — every child pays h(s), so ~−5.4% emu / ~−6% 5ST. **v5c21** fully unrolls `apply_1q` with `.rept` (`i=6..0` immediates; drop `li`/`bgez` and the v5c14 `addi t0` fill) — ~−5.5% emu/5ST at +272B `.text`. **v5c22** drops the unused `z.p` stores in h(σ²) (pack already in `a2`; keep `z.o@+21`) — −14 insn per σ² view; ~−0.8% emu/5ST.
 
 **Ripes 5ST method:** CLI `RV32_5S` on `rubik_solve_asm` only (tiny ELF), sample states from [`d11_ripes_sample_states.txt`](rubik/results/d11_ripes_sample_states.txt) (emu min/max). JSON + CSV: [`results/ripes_5s/`](rubik/results/ripes_5s/). Full 2644× not run (too slow in GUI/CLI). rv32emu still owns the **mean of 2644** KPI.
 

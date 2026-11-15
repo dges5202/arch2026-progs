@@ -3,6 +3,6 @@
 - Processor: `RV32_5S` (5-stage + forwarding)
 - Binary: freestanding ELF, `main` calls only `rubik_solve_asm` then returns
 - States: see `../d11_ripes_sample_states.txt` (emu min / max)
-- Versions: v1, v2b, v3, v4b, v5a, v5b, v5c1–c5, v5c6–c14, v5c15–c19, v5c20, **v5c21** (apply_1q `.rept` unroll); also `cO3flto_*` GCC samples
+- Versions: v1, v2b, v3, v4b, v5a, v5b, v5c1–c5, v5c6–c14, v5c15–c21, **v5c22** (drop dead σ² `z.p` stores); also `cO3flto_*` GCC samples
 
 See `summary.csv` and per-run `*.json`.

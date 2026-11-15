@@ -87,8 +87,8 @@
 #
 #    (3) h_pos3ori(view*)  [s at Q+16, or S after inv/σ]; walk = a4
 #    (4) waterfall vs r(s3); inv/σ through S; σ/σ² use a3=&sig
-#        σ/σ²: while writing y.p[sig[i]]=sig[p[i]] (z at +14), if value
-#        is cubie 0|3|6 then pack |= sig[i]<<6|<<3|<<0 into a2 — no 7-scan
+#        σ/σ²: while scattering, if value is cubie 0|3|6 pack into a2
+#        (no 7-scan); σ writes y.p/y.o; σ² writes z.o@+21 only (v5c22)
 #    (5) push: addi s2,s3,s4,s5 + sb path/pface
 #
 #  out/cap stay in s10/s11 (no spill). Pin &sig in a3; a7=&mod3tab; a2=pack.
@@ -154,6 +154,8 @@
 #        → loop_heuristic_core_p
 #  v5c21 apply_1q: fully unroll i=6..0 (.rept); drop li/bgez loop tax
 #        → apply_1q; same LU+CSE body as v5c17 (no addi t0 fill)
+#  v5c22 h(σ²): drop dead z.p stores (pack in a2; keep z.o@+21)
+#        → loop_heuristic_core_sym2_p_build
 #
 
     .data
@@ -162,7 +164,7 @@
 
     .balign 16
     states: .zero 192                              # 12*16; Q=&states[g]; p@0..6 o@7..13
-    scratch:.zero 32                               # inv; σ: y@0..13; σ²: z@14..27
+    scratch:.zero 32                               # inv; σ y@0..13; σ² z.o@21..27 (z.p unused)
 
     # P-cluster: next=P+11, pface=P+23
     path:   .zero 11
@@ -1089,11 +1091,10 @@ loop_heuristic_core_sym_o_index:
     PDB_NIBBLE
 
 
-    # --- h(σ²): z=sym3(y); in=y@S+0, out=z@S+14; v5c15 merged like σ ---
+    # --- h(σ²): z=sym3(y); in=y@S+0; v5c15 merge + v5c22 no z.p store ---
     mv      a4, s9                                 # base=&y.p[0]; walks y.p[i]
 
-
-    # v5c18: same CSE as σ; z.p@+14 / z.o@+21; a4 walks y
+    # v5c18 CSE; v5c22: pack in a2 only — drop dead z.p@+14; keep z.o@+21
     li      t0, 0
     li      t1, 7
     li      t4, 3                                  # cubie 3
@@ -1106,7 +1107,7 @@ loop_heuristic_core_sym2_p_build:
     lbu     t3, 0(t3)                              # sig[y.p[i]] = value
     lbu     a0, 0(a6)                              # sig[i]
 
-    # pack before a0 += S (need bare sig[i])
+    # pack while value/sig live (no z.p sb — arank uses a2)
     bnez    t3, loop_heuristic_core_sym2_p_build_skip1
     slli    t6, a0, 6
     or      a2, a2, t6                             # | pos0<<6
@@ -1123,8 +1124,6 @@ loop_heuristic_core_sym2_p_build_skip2:
 loop_heuristic_core_sym2_p_build_skip3:
     lbu     t6, 7(a6)                              # kk[i] (a6 still &sig)
     mv      a6, a0                                 # handoff: a6 = bare sig[i]
-    add     a0, a0, s9
-    sb      t3, 14(a0)                             # z.p[sig[i]]
 
     # z.o[sig[i]] @ +21; t2 still y.p[i]; a6 still bare sig
     lbu     t3, 7(a4)                              # y.o[i]
@@ -1142,7 +1141,7 @@ loop_heuristic_core_sym2_p_build_skip3:
     addi    a4, a4, 1
     bne     t0, t1, loop_heuristic_core_sym2_p_build
 
-    # v5b: arank from z pack in a2 (no sym2_p_index 7-scan)
+    # v5b: arank from z pack in a2 (no sym2_p_index; no z.p memory)
     mv      t6, a2
     add     t6, t6, s7
     lbu     t6, 0(t6)                              # a = arank[pack]

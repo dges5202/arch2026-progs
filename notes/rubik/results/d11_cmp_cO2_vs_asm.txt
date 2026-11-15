@@ -1,6 +1,6 @@
 @@d11_c_O2 N=2644 bad=0
 @@d11_c_O2 sum=4607051860 min=680283 max=9664682 p50=1603712 p90=2480438 p99=4041700
 @@d11_asm N=2644 bad=0
-@@d11_asm sum=1302334314 min=202186 max=2693725 p50=450745 p90=709659 p99=1212373
+@@d11_asm sum=1291672922 min=200352 max=2666047 p50=447076 p90=703723 p99=1203581
 @@d11_cmp len_disagree=0 asm_wins=2644 c_wins=0 tie=0
-@@d11_cmp note=rv32emu_cycle_eq_instret same_order_C_then_ASM v5c21_apply_unroll
+@@d11_cmp note=rv32emu_cycle_eq_instret same_order_C_then_ASM v5c22_drop_zp_store
